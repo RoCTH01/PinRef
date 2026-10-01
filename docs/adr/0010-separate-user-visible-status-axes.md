@@ -7,3 +7,5 @@ Pending feedback uses an active verb and no success mark; success appears only a
 After a tab, panel, Dashboard, or worker resumes, PinRef reconciles revisions rather than replacing the whole view. Clean fields patch silently, dirty fields retain their Local Draft, same-field changes become Updated elsewhere, and operations with unknown completion reconcile by operation ID before retrying; when freshness cannot be established, the UI says `May be out of date` and offers a local-state Refresh without confusing it with Reload Preview.
 
 Revised on 2026-10-01: Local Draft and same-field Updated elsewhere no longer apply to Notes (ADR-0014).
+
+Revised on 2026-10-01 (ADR-0015): Pinterest Link Status is no longer a visible axis for References. It remains only as the observed Save state that explains a Not in PinRef Context Pin.

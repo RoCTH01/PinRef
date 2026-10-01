@@ -17,8 +17,8 @@ function createBrowser() {
   const chrome = {
     runtime:{ getURL:url, onMessage:event(), onConnect:event() },
     action:{ onClicked:event() },
-    sidePanel:{ onClosed:event(), opened:[], async setPanelBehavior(value){this.behavior=value;}, async open(options){this.opened.push(options);} },
-    tabs:{ onActivated:event(), onUpdated:event(), onRemoved:event(), async get(id){if(!tabs.has(id))throw new Error("closed");return tabs.get(id);}, async query(query){return [...tabs.values()].filter(tab=>(query.windowId === undefined || tab.windowId===query.windowId)&&(!query.active || tab.active));}, async sendMessage(id,message){if(message.type === "pinref:stopImportScan")stopped.push({id,...message});return {ok:true};} },
+    sidePanel:{ onClosed:event(), opened:[], options:new Map(), async setPanelBehavior(value){this.behavior=value;}, async setOptions(options){this.options.set(options.tabId,options);}, async open(options){this.opened.push(options);} },
+    tabs:{ onActivated:event(), onUpdated:event(), onRemoved:event(), async get(id){if(!tabs.has(id))throw new Error("closed");return tabs.get(id);}, async query(query){return [...tabs.values()].filter(tab=>(query.windowId === undefined || tab.windowId===query.windowId)&&(!query.active || tab.active));}, created:[], async create(options){this.created.push(options);return {id:999,...options};}, async sendMessage(id,message){if(message.type === "pinref:stopImportScan")stopped.push({id,...message});return {ok:true};} },
     windows:{ onFocusChanged:event(), async get(id){return windows.get(id);} },
     permissions:{ onRemoved:event(), async contains(){return true;} },
     scripting:{ async executeScript(){} },

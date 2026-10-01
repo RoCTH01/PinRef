@@ -5,3 +5,5 @@ Reload Preview updates only preview URL, rendition evidence, preview availabilit
 The previous preview remains visible while loading and after failure. Pinterest status reconciliation is a separate command and outcome, and committed preview changes propagate without rerendering or defocusing metadata editors.
 
 Revised on 2026-10-01: Local Draft no longer exists as a domain concept (ADR-0014).
+
+Superseded on 2026-10-01 by ADR-0015: PinRef no longer offers Reload Preview.

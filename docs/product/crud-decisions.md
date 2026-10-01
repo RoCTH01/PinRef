@@ -22,7 +22,8 @@ Pinterest 負責 discovery、原生 Save、Boards 與來源可用性。PinRef �
 | Reference | 由已確認的 Capture Attempt 或明確 Import 建立，且已完成本地 commit 的 PinRef Library item。 |
 | Context Pin | 在單一 Pinterest tab 中，由明確 route、close-up 或原生 Save 行為建立的可辨識 Pin。 |
 | PinRef 收錄狀態 | 一張 Pin 目前是 Not in PinRef、In PinRef 或 In Trash。 |
-| Pinterest Link Status | PinRef 最近一次可靠觀察到的 Pinterest Saved、Not saved、Unavailable 或 Unknown。 |
+| Reference Name | Reference 可選、使用者可編輯的名稱；空白時顯示 Pin ID。只是 PinRef metadata，不改 Pinterest。 |
+| Pinterest Link Status | Context Pin 當下觀察到的 Pinterest Saved、Not saved、Unavailable 或 Unknown；只用於說明 Not in PinRef 的下一步，不再對 Reference 顯示或更新（ADR-0015）。 |
 | Inspector | PinRef 唯一的詳細／操作介面；在 Pinterest 顯示 This Pin 或 Import，在 Dashboard 顯示目前選取並提供完整 Library 管理。Chrome Side Panel 只是承載它的容器。 |
 | Inspector Placement | Docked（在 Chrome Side Panel 中）或 Floating（浮在 Dashboard 上）。關閉不改 placement，下次以原 placement 開啟。 |
 | Needs Attention | 收納 identity 已知、但尚未確認或 local write 失敗之 Capture Attempts 的 Dashboard 頁面。 |
@@ -42,7 +43,7 @@ Pinterest 負責 discovery、原生 Save、Boards 與來源可用性。PinRef �
 | 介面 | 責任 | 明確排除 |
 |---|---|---|
 | Pinterest | Discovery、原生 Save、Boards 與來源 UI | PinRef 不取代或覆蓋原生 controls。 |
-| Inspector（Pinterest，Docked） | 情境狀態、Tag assignment、Note、preview reload、status check、低摩擦 Tag rename，以及完整 Bootstrap Import lifecycle | 不提供任意單張 Pin 的 Add、Trash、Restore、Permanent Delete、Merge、Global Delete 或 Board management。 |
+| Inspector（Pinterest，Docked） | 情境狀態、Reference Name、Tag assignment、Note、低摩擦 Tag rename，以及完整 Bootstrap Import lifecycle | 不提供任意單張 Pin 的 Add、Trash、Restore、Permanent Delete、Merge、Global Delete 或 Board management。 |
 | Inspector（Dashboard，Docked 或 Floating） | 目前 Dashboard 選取的 single／multi-selection、Tags、Note，以及 Dashboard 的完整 Library 管理，包括 Trash、Merge 與 Global Delete | 不執行 Import。 |
 | Dashboard | 完整 Library、搜尋、selection、Tag management、Capture recovery、Trash、Restore 與 Permanent Delete | 不執行 Import 或選擇其來源，不改動 Pinterest Save 或 Boards。 |
 
@@ -193,7 +194,7 @@ Import 結果的 View Library 開啟全部 All Pins，依實際加入 PinRef 的
 | Not in PinRef | 唯讀顯示 identity 與 preview；依 Pinterest Link Status 提供下一步。 |
 | Capture pending | Saving on Pinterest 或 Saving to PinRef；metadata editor 尚不可用。 |
 | Needs attention | Save not confirmed 或 Couldn't save to PinRef，附 recovery action。 |
-| Reference available | 顯示 committed Tags、Note、added time、preview 與 original link。 |
+| Reference available | 顯示 preview、其下的 Name、committed Tags、Note、added time 與 original link。 |
 | Identity unavailable | 明確說明無法辨識且 PinRef 沒有寫入任何資料。 |
 
 Not in PinRef 之下：Not saved 引導使用 Pinterest Save；Saved 引導先開啟所需 Board／Saved Pins，再於 Side Panel 執行 collection Import；Unknown 提供 Check again。單張 Pin 頁不能據此猜測所屬 Board、直接 Import 或預選目前 Pin。Import view 與以上六種 Pin context states 分開呈現。
@@ -244,20 +245,20 @@ Not in PinRef 之下：Not saved 引導使用 Pinterest Save；Saved 引導先�
 
 No Note 是單一產品狀態。Never-written、cleared、empty 與 whitespace-only committed Notes 不做區分。清空 editor 仍走正常 autosave；commit 成功前，空白只是一份 Local Draft，舊 committed Note 仍是真實值。MVP 不設獨立 Clear Note action。
 
-### Reload Preview
+### Reference Name
 
 | 項目 | 決策 |
 |---|---|
-| 使用者觸發 | Side Panel 或 Dashboard 的 Reload Preview。 |
-| Pinterest 畫面 | 不 navigation、不開 background tab、不修改 Save 或 Board。 |
-| Side Panel | loading 時保留舊 preview。 |
-| Dashboard | patch gallery image；multi-selection 顯示逐項結果。 |
-| 可修改 | 同一 Pin identity 的 preview URL、rendition evidence、preview availability reason、preview checked time。 |
-| 不可修改 | Pin identity、added time、Tags、Note、draft、PinRef 收錄狀態、Pinterest Link Status、Boards、preferences 與 generated metadata。 |
-| 成功 | Preview updated 或 Preview already current。 |
-| 失敗與復原 | 保留 last-known preview；Open on Pinterest 後 Retry；identity mismatch 必須停止，不得 Relink。 |
-| MVP | 必要。 |
-| Prototype 驗證 | Pin 不在 open tab、invalid image、較差 rendition、identity mismatch 與 batch partial success。 |
+| 使用者觸發 | Inspector（Pinterest 或 Dashboard）single selection 的 Name 欄位，位於 preview 下方。 |
+| 呈現 | 未命名時以 Pin ID（`Pin 123…`）作為 placeholder；Note tabs、Note preview、Trash 列表都顯示 Name，空白時顯示 Pin ID。 |
+| Commit | Enter 或 blur 時 commit；Escape 還原為已 commit 的 Name。清空即回到 Pin ID。最長 120 字元。 |
+| 衝突 | 與 Note 相同，最後一次 commit 為準（ADR-0014）。Trash 或 Permanent Delete 之後的舊 write 以 lifecycle revision 拒絕。 |
+| Search | Dashboard main search 也比對 Name 與 Pin ID。 |
+| Pinterest 畫面 | 不變；Name 只是 PinRef metadata，不會改 Pinterest 的標題。 |
+
+### Preview Reload 與 Pinterest status check（已移除）
+
+2026-10-01 起，Inspector 不再提供 Reload preview、Check Pinterest status，也不顯示 Reference 的 Pinterest Link Status（ADR-0015）。Reference 只會在確認 Save 或從使用者自己的 Saved Pins／Board Import 後建立，因此不需要再顯示這個狀態。已存的 `linkStatus` 原封保留，不顯示也不刪除。
 
 ## Delete
 
@@ -276,7 +277,7 @@ No Note 是單一產品狀態。Never-written、cleared、empty 與 whitespace-o
 | 復原 | Restore | 再次 Trash | 無法復原 |
 | MVP | 必要 | 必要 | 逐筆與 Empty Trash 都必要；Trash 不自動過期 |
 
-Pinterest Unsave、Pin 刪除、私人化或 status check failure 都不會自動移動或刪除 Reference。Side Panel 不提供 Trash、Restore 或 Permanent Delete。
+Pinterest Unsave、Pin 刪除或私人化都不會自動移動或刪除 Reference。Side Panel 不提供 Trash、Restore 或 Permanent Delete。
 
 Move to Trash 前先 flush pending edits。若仍有 dirty 或 failed draft，Dashboard 提供 Retry saving、Discard unsaved changes and move to Trash、Cancel。Trash commit 後以 lifecycle revision 拒絕晚到的舊 write。
 
@@ -315,19 +316,7 @@ Merge 與 Global Delete 成功後建立短期、version-guarded operation receip
 
 ### Pinterest Unavailable 或 Unknown
 
-| 項目 | 決策 |
-|---|---|
-| 使用者觸發 | Open original、Check status 或來源 observation。 |
-| Pinterest 畫面 | 顯示自己的 access result。 |
-| Side Panel | Pinterest Pin unavailable 或 Pinterest status unknown；Tags、Note 仍可編輯。 |
-| Dashboard | 保留 Reference、last-known preview、Tags、Note 與 searchability。 |
-| 實際資料 | 只更新 Pinterest Link Status、可靠 reason 與 checked time。 |
-| 判定 | Pinterest 有可靠不可用證據才標 Unavailable；network、login、permission 或 recognition failure 都是 Unknown。 |
-| 成功 | 之後可恢復 Saved 或 Not saved。 |
-| 等待 | Checking Pinterest status。 |
-| 失敗與復原 | 保持 Unknown；Retry later 或 Move to Trash。 |
-| MVP | 必要；Relink 不在 MVP。 |
-| Prototype 驗證 | Deleted、private、signed-out、network、locale 與 recovery。 |
+PinRef 不再檢查或對帳 Reference 的 Pinterest 狀態（ADR-0015）。Pinterest 上的 Pin 被刪除、私人化或 Unsave，都不影響 Reference、preview、Tags 與 Note；使用者可自行 Move to Trash。Not in PinRef 的 Context Pin 仍依當下觀察到的 Pinterest Save 狀態提供下一步。
 
 ### Resume 與 stale state
 
@@ -351,7 +340,7 @@ Merge 與 Global Delete 成功後建立短期、version-guarded operation receip
 |---|---|
 | PinRef 收錄狀態 | Not in PinRef；In PinRef；In Trash |
 | Capture | Saving on Pinterest；Saving to PinRef；Save not confirmed；Couldn't save to PinRef |
-| Pinterest Link | Checking Pinterest status；Saved on Pinterest；Not saved on Pinterest；Pinterest Pin unavailable；Pinterest status unknown |
+| Pinterest Link（只用於 Not in PinRef 的 Context Pin） | Saved on Pinterest；Not saved on Pinterest；Pinterest Pin unavailable；Pinterest status unknown |
 | Metadata Mutation | Editing；Saving changes；Changes saved；Changes not saved；Updated elsewhere；Unsaved changes |
 | Import Session | Scanning；Ready to import；Importing；Paused；Import incomplete；Import complete |
 
@@ -367,7 +356,7 @@ Cross-device sync 是未來 opt-in 能力。Stable IDs、revisions、operation I
 
 ### Search
 
-- Main search 搜尋 committed Tag names 與 committed Notes。
+- Main search 搜尋 Reference Name、Pin ID、committed Tag names 與 committed Notes。
 - Pinterest Board 永遠不是 PinRef searchable field。
 - Search focus 可顯示 Tag recommendations；outside click 關閉 suggestions。
 - Tag filters 支援多 Tag；AND、OR、tokenization 留給 search specification。
@@ -381,7 +370,7 @@ Cross-device sync 是未來 opt-in 能力。Stable IDs、revisions、operation I
 - Floating 與 Docked 是 placement，不是不同 detail mode；Docked 位於 Chrome Side Panel，Floating 浮在 Dashboard 上，兩者不會同時出現。
 - 切換 Reference 只更新內容，不改 placement。
 - Floating 在 selection 清除後關閉；Docked 保留 empty placeholder。關閉 Inspector 不改 placement，下次以原 placement 開啟。
-- Single selection 顯示 preview、Pinterest Link Status、Tags、editable Note、added time、Open original。
+- Single selection 由上而下顯示 preview、editable Name（placeholder 為 Pin ID）、Tags、editable Note、added time、Open original。
 - Multi-selection 顯示 stacked thumbnails、count、shared Tag intersection、Note rail。Note 永遠只編輯一筆 active Reference，不 batch overwrite。
 - Clear selection 是低強度 footer action，Note editor 取得彈性垂直空間。
 
@@ -408,8 +397,7 @@ Included：
 - Shared Local-first Library 與 field-level revision contract。
 - Dashboard Library、Needs Attention、Trash 與完整 Tag management；Side Panel 完整 Import lifecycle。
 - Optional、repeatable Import from Pinterest；須通過identity、tab binding、scan lifecycle與state-transition prototype gates，並以Chrome Web Store review作release gate。
-- Tags、Note autosave、conflict、preview reload、status check、search、filters、multi-selection。
-- Non-destructive Pinterest status reconciliation。
+- Reference Name、Tags、Note autosave、search、filters、multi-selection。
 - 共用 pending、success、failure、unknown、conflict、stale feedback。
 
 Excluded：

@@ -212,7 +212,15 @@
       if (view.sessionId && !current()) { view.sessionId=null; view.sourceDetailsOpen=true; }
       if (view.manualSessionId && !view.remote.sessions?.[view.manualSessionId]) view.manualSessionId=null;
       const nextMode=view.captureFocus ? "pin" : view.manualSessionId ? "import" : pageMode(result.source,result);
-      if(view.mode==="dashboard-inspector"&&nextMode!=="dashboard-inspector")await flushInspectorFrame();
+      if(view.mode==="dashboard-inspector"&&nextMode!=="dashboard-inspector"){
+        await flushInspectorFrame();
+        // Floating moved the Inspector onto the Dashboard. The panel closes itself because the
+        // embedded Inspector that asked for Floating may be removed before its own close call runs.
+        if(result.dashboardInspector&&result.preferences?.inspectorMode==="floating"&&chrome.sidePanel?.close){
+          chrome.sidePanel.close({windowId}).catch(()=>{view.mode=nextMode;render();});
+          return;
+        }
+      }
       view.mode=nextMode;
       const s = current();
       if (!view.busy && s && ["paused","ready-to-import"].includes(s.status)) {

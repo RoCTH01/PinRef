@@ -42,6 +42,14 @@
             reference.noteRevision += 1;
             return {ok:true, record:structuredClone(reference)};
           }
+          case "SAVE_NAME": {
+            // A Reference Name is optional; empty falls back to the Pin ID. Last committed write wins, like Notes.
+            if (!reference) return fail("reference-not-active");
+            if (reference.lifecycleRevision !== c.lifecycleRevision || reference.generation !== c.generation) return fail("stale-reference");
+            if (typeof c.name !== "string" || c.name.trim().length > 120) return fail("invalid-name");
+            reference.name = c.name.trim();
+            return {ok:true, record:structuredClone(reference)};
+          }
           case "CREATE_TAG": {
             const name = String(c.name || "").trim();
             if (!name || name.length > 80) return fail("invalid-tag-name");
@@ -142,18 +150,6 @@
             Object.values(state.attempts).forEach(a=>{if(a.status==="pending")a.status="unconfirmed";}); break;
           case "INTERRUPT_CAPTURES":
             Object.values(state.attempts).forEach(a=>{if(a.originTabId===c.tabId&&a.status==="pending")a.status="unconfirmed";}); break;
-          case "UPDATE_PREVIEW":
-          case "UPDATE_LINK_STATUS": {
-            if (!reference || c.lifecycleRevision !== reference.lifecycleRevision || c.generation !== reference.generation) return fail("stale-reference");
-            if (c.type === "UPDATE_PREVIEW") {
-              const preview=safePreview(c.previewUrl);
-              if (!preview) return fail("preview-unavailable");
-              reference.previewUrl=preview; reference.previewCheckedAt=now();
-            } else {
-              if (!["saved","not-saved","unavailable","unknown"].includes(c.status)) return fail("invalid-status");
-              reference.linkStatus=c.status; reference.linkCheckedAt=now();
-            } break;
-          }
           default:return fail("unknown-library-command");
         }
         return {ok:true};

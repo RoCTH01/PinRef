@@ -155,6 +155,48 @@
     const source=type==="TRASH"?state.references:state.trash;
     return {type,pinIds,bases:Object.fromEntries(pinIds.map(id=>[id,{generation:source[id].generation,lifecycleRevision:source[id].lifecycleRevision}]))};
   }
+  const referenceName = record => record.name || `Pin ${record.pinId}`;
+  // A Reference Name commits on Enter or blur; Escape restores the committed Name.
+  // Typed text is kept across re-renders until it is committed.
+  function createNames({ getState, changed, feedback = () => {} }) {
+    const typed = new Map();
+    function html(record) {
+      const pinId = escape(record.pinId);
+      const value = typed.has(record.pinId) ? typed.get(record.pinId) : record.name || "";
+      return `<input class="reference-name" data-reference-name="${pinId}" data-focus="name-${pinId}" aria-label="Name for Pin ${pinId}" `
+        + `placeholder="Pin ${pinId}" value="${escape(value)}" maxlength="120" spellcheck="false" autocomplete="off">`;
+    }
+    async function save(pinId) {
+      if (!typed.has(pinId)) return true;
+      const name = typed.get(pinId).trim();
+      typed.delete(pinId);
+      const record = getState().references[pinId];
+      if (!record || name === (record.name || "")) { changed(); return true; }
+      const result = await command({ type:"SAVE_NAME", pinId, name, lifecycleRevision:record.lifecycleRevision, generation:record.generation });
+      const current = getState().references[pinId];
+      if (result.ok && current?.generation === result.record.generation) current.name = result.record.name;
+      feedback(result.ok ? "Saved locally" : "Could not save the Name. Your committed data is unchanged.");
+      changed();
+      return result.ok;
+    }
+    function bind(root) {
+      root.querySelectorAll("[data-reference-name]").forEach(input => {
+        const pinId = input.dataset.referenceName;
+        input.addEventListener("input", () => typed.set(pinId, input.value));
+        input.addEventListener("keydown", event => {
+          if (event.key === "Enter") { event.preventDefault(); input.blur(); }
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            typed.delete(pinId);
+            input.value = getState().references[pinId]?.name || "";
+            input.blur();
+          }
+        });
+        input.addEventListener("blur", () => { if (!renderingDepth) save(pinId); });
+      });
+    }
+    return { html, bind, flush: () => Promise.all([...typed.keys()].map(save)) };
+  }
   function drag(element, handle, enabled, moved) {
     handle?.addEventListener("pointerdown",event=>{
       if (!enabled() || event.target.closest("button,input") || event.button!==0) return;
@@ -170,5 +212,5 @@
       handle.addEventListener("pointermove",move);handle.addEventListener("pointerup",end);handle.addEventListener("pointercancel",end);
     });
   }
-  window.PinRefUI={escape,command,image,preserveRender,createNotes,assignmentCommand,createTagCommand,lifecycleCommand,drag,deferRender,isRendering:()=>renderingDepth>0};
+  window.PinRefUI={escape,command,image,preserveRender,createNotes,createNames,referenceName,assignmentCommand,createTagCommand,lifecycleCommand,drag,deferRender,isRendering:()=>renderingDepth>0};
 })();

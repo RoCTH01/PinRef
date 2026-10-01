@@ -1,6 +1,6 @@
 # Integrate the PinRef prototypes into one production Side Panel and Dashboard
 
-> Revised on 2026-10-01: Inspector placement and Dashboard hosting follow ADR-0013, and Notes follow ADR-0014. Where this spec mentions a Side Panel, read the Docked Inspector on Pinterest; Local Draft, Updated elsewhere and Note conflict stories are superseded; the Dashboard has no in-page Docked layout.
+> Revised on 2026-10-01: Inspector placement and Dashboard hosting follow ADR-0013, and Notes follow ADR-0014. Where this spec mentions a Side Panel, read the Docked Inspector on Pinterest; Local Draft, Updated elsewhere and Note conflict stories are superseded; the Dashboard has no in-page Docked layout. The Side Panel exists only on Pinterest and the Dashboard; the idle guide applies to unsupported Pinterest pages, and the action elsewhere opens the Dashboard (ADR-0012). Preview Reload and Pinterest status checks are removed (ADR-0015); References gain an optional Reference Name.
 
 ## Problem Statement
 

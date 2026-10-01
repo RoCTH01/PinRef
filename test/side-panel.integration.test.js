@@ -38,6 +38,20 @@ test("extension action opens the Docked Inspector outside Dashboard; active Save
   h.chrome.action.onClicked.emit(h.tabs.get(41));
   assert.equal(JSON.stringify(h.chrome.sidePanel.opened),JSON.stringify([{windowId:7}]));
   assert.equal((await h.state()).source.kind,"saved-root");
+  // The Side Panel exists only on Pinterest and Dashboard; elsewhere the action opens Dashboard.
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(h.chrome.sidePanel.options.get(41)?.enabled,true);
+  const outside={id:42,windowId:7,index:1,active:false,url:"https://example.com/"};h.tabs.set(42,outside);
+  h.chrome.tabs.onUpdated.emit(42,{url:outside.url},outside);
+  assert.equal(h.chrome.sidePanel.options.get(42)?.enabled,false);
+  assert.equal(h.chrome.sidePanel.options.get(42)?.path,undefined,"keeps the one global panel instance");
+  h.chrome.action.onClicked.emit(outside);
+  assert.equal(h.chrome.sidePanel.opened.length,1,"no Side Panel outside Pinterest and Dashboard");
+  assert.equal(JSON.stringify(h.chrome.tabs.created),JSON.stringify([{url:h.url("dashboard/index.html"),windowId:7,index:2}]));
+  const dashboardTab={id:43,windowId:7,index:2,active:false,url:h.url("dashboard/index.html")};h.tabs.set(43,dashboardTab);
+  h.chrome.tabs.onUpdated.emit(43,{url:dashboardTab.url},dashboardTab);
+  assert.equal(h.chrome.sidePanel.options.get(43)?.enabled,true);
+  h.tabs.delete(42);h.tabs.delete(43);
   h.tabs.get(41).url="https://ca.pinterest.com/roahillust/_pins/";
   assert.equal((await h.state()).source.kind,"saved-root");
   h.tabs.get(41).url="https://ca.pinterest.com/roahillust/anomoly-design/";

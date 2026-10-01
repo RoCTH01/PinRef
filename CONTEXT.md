@@ -32,13 +32,13 @@ _Avoid_: Inspector mode, dock state
 The identifiable Pin currently established by an explicit route, close-up, or native Save action in one Pinterest tab. It is per-tab, ephemeral, and may or may not have a committed Reference.
 _Avoid_: Current reference, hovered Pin, globally active Pin
 
-**Pinterest Link Status**:
-PinRef's last known observation of whether a referenced Pin is saved and available on Pinterest. It does not control PinRef membership and an unknown, unsaved, or unavailable status never deletes a Reference.
-_Avoid_: Sync status, Reference status, saved state
+**Reference Name**:
+An optional, user-editable label for a Reference. When it is empty, PinRef shows the Pin ID ("Pin 123…") instead. It is PinRef metadata and never changes the Pin's title on Pinterest.
+_Avoid_: Title, Pin title, caption
 
-**Pinterest Status Reconciliation**:
-The non-destructive act of refreshing Pinterest Link Status from reliable evidence. It does not make the Pinterest saved collection and the PinRef Library identical.
-_Avoid_: Full sync, mirror
+**Pinterest Link Status**:
+The observed Pinterest Save state of a Context Pin (Saved, Not saved, Unavailable, Unknown), used only to explain the next step when the Pin is Not in PinRef. PinRef does not show or refresh it for References (ADR-0015), and it never changes PinRef membership.
+_Avoid_: Sync status, Reference status, saved state
 
 **Bootstrap Import**:
 An explicit, optional Inspector flow on Pinterest for scanning the active Pinterest Saved or Board surface and selecting pre-existing saves to add to PinRef. It may be repeated as Import from Pinterest, reports completeness only for that scan session, and is not account-wide sync, automatic capture, Board persistence, or ongoing mirroring.

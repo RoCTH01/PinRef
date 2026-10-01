@@ -1,16 +1,15 @@
-body { height:auto; min-height:100dvh; overflow-y:auto; font-size:13px; line-height:1.5; }
-.panel-header { position:sticky; top:0; z-index:20; display:flex; justify-content:space-between; align-items:center; padding:8px 14px; border-bottom:1px solid var(--line); background:var(--panel); }
-.panel-header strong { font-size:13px; letter-spacing:-.015em; }
-.panel-header nav { display:flex; align-items:center; gap:6px; }
-.panel-header a { color:var(--muted); text-decoration:none; padding:10px 4px; font-size:12px; }
-.panel-header a:hover { color:var(--text); }
+/* The Inspector on Pinterest shares the Dashboard Inspector's look (ADR-0013); the browser owns the Side Panel width. */
+body { height:auto; min-height:100dvh; overflow-y:auto; background:var(--panel); font-size:13px; line-height:1.5; }
 #panel-main { outline-offset:-3px; }
-.sidepanel-inspector { position:static; width:auto; min-height:calc(100dvh - 92px); border:0; border-radius:0; box-shadow:none; backdrop-filter:none; overflow:visible; }
-.sidepanel-inspector .panel-titlebar { position:sticky; z-index:10; top:51px; min-height:52px; background:var(--panel); }
-.sidepanel-inspector .panel-heading { display:flex; flex-direction:column; gap:0; }
-.sidepanel-inspector .panel-heading h1 { margin:0; color:var(--text); font-size:14px; font-weight:700; letter-spacing:-.02em; }
-.sidepanel-inspector .panel-heading small { font-size:10px; }
-.sidepanel-inspector .inspector-body { display:flex; flex-direction:column; gap:14px; max-height:none; min-height:calc(100dvh - 150px); overflow:visible; padding:14px; }
+.sidepanel-inspector { position:static; width:auto; min-height:calc(100dvh - 40px); border:0; border-radius:0; background:var(--panel); box-shadow:none; backdrop-filter:none; overflow:visible; }
+.sidepanel-inspector .panel-titlebar { position:sticky; z-index:20; top:0; background:var(--panel); }
+.sidepanel-inspector .panel-heading h1 { margin:0; color:var(--muted); font-size:11px; font-weight:650; letter-spacing:0; }
+.sidepanel-inspector .panel-heading { flex:1 1 auto; overflow:hidden; }
+.sidepanel-inspector .panel-heading h1 { flex:0 0 auto; white-space:nowrap; }
+.sidepanel-inspector .panel-heading small { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.panel-toolbar { flex:0 0 auto; display:flex; align-items:center; gap:2px; }
+.panel-toolbar .open-source-button { text-decoration:none; white-space:nowrap; }
+.sidepanel-inspector .inspector-body { display:flex; flex-direction:column; gap:16px; max-height:none; min-height:calc(100dvh - 90px); overflow:visible; padding:12px; }
 h2 { font-size:15px; margin:0 0 8px; }
 h3 { font-size:13px; margin:0 0 6px; }
 p { margin:7px 0; }
@@ -21,8 +20,15 @@ p { margin:7px 0; }
 .muted { color:var(--muted); font-size:12px; }
 .panel-card .actions { margin-top:12px; }
 .panel-card .actions > .primary { flex:1; }
-.button { min-height:44px; }
+/* Import still uses .button; match the Dashboard's quiet-button. */
+.button { min-height:40px; padding:8px 13px; border:1px solid var(--line); border-radius:11px; background:var(--soft); color:var(--text); font-size:13px; font-weight:400; }
+.button:hover { background:var(--panel-3); }
+.button.primary { border-color:transparent; background:var(--text); color:var(--bg); font-weight:720; }
+.button.quiet { border-color:transparent; background:transparent; color:var(--muted); }
+.button.quiet:hover { background:var(--soft); color:var(--text); }
 .notice { margin:10px 0; font-size:12px; }
+.context-card .notice { margin:0; }
+.notice p { margin:6px 0 10px; }
 .disclosure { border:0; padding:10px 0 0; margin-top:8px; color:var(--muted); font-size:12px; }
 summary { cursor:pointer; min-height:32px; display:list-item; }
 .session-list { margin:12px 0; }
@@ -56,19 +62,13 @@ summary { cursor:pointer; min-height:32px; display:list-item; }
 .failed-result { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 0; border-bottom:1px solid var(--line); }
 .failed-result span { min-width:0; overflow-wrap:anywhere; }
 .failed-result small { display:block; color:var(--muted); }
-.panel-footer { padding:0 14px 16px; color:var(--muted); font-size:10px; }
+.panel-footer { padding:0 12px 14px; color:var(--muted); font-size:9px; }
 #feedback { position:sticky; bottom:0; margin:0; padding:0; background:var(--panel-2); font-size:12px; }
 #feedback:not(:empty) { padding:12px 14px; border-top:1px solid var(--line); }
 button,a,input { scroll-margin-block:75px; }
 @media (max-width:300px) { .import-candidates { grid-template-columns:1fr; } }
-/* The browser owns Side Panel width; Dashboard's fixed canvas does not apply here. */
-.context-card { gap:14px; }
-.context-preview { width:100%; height:min(55vw,250px); min-height:150px; border-radius:12px; border:1px solid var(--line); }
-.context-preview img { object-fit:contain; }
-.context-card .selection-overview-copy { border-bottom:1px solid var(--line); padding-bottom:12px; }
-.context-card .selection-overview-copy h2 { font-size:17px; overflow-wrap:anywhere; }
-.context-card .detail-grid { border-top:1px solid var(--line); padding-top:12px; }
-.sidepanel-inspector .note-editor { min-height:150px; }
+.context-card .selection-overview-copy h2 { overflow-wrap:anywhere; }
+.sidepanel-inspector .note-editor { min-height:168px; }
 .sidepanel-empty { min-height:180px; padding:20px 12px; }
 .sidepanel-empty p { max-width:275px; font-size:12px; }
 .idle-directions { display:grid; gap:5px; }
@@ -80,12 +80,7 @@ button,a,input { scroll-margin-block:75px; }
 .import-source .actions { margin-top:4px; }
 .import-source .actions > .primary { width:100%; }
 .panel-settings { margin-top:auto; border-top:1px solid var(--line); padding-top:10px; }
-.tag-query-label,.context-rename label { display:grid; gap:8px; font-size:12px; }
-.tag-query-label input,.context-rename input { min-width:0; width:100%; padding:10px; border:1px solid var(--line); border-radius:9px; background:var(--soft); }
-.context-rename { display:grid; gap:10px; padding:12px; border:1px solid var(--line); border-radius:10px; }
-.context-card h2 { overflow-wrap:anywhere; }
 body[data-panel-mode="dashboard-inspector"] { height:100dvh; overflow:hidden; }
-body[data-panel-mode="dashboard-inspector"] .panel-header,
 body[data-panel-mode="dashboard-inspector"] #panel-main > .panel-titlebar,
 body[data-panel-mode="dashboard-inspector"] .panel-footer,
 body[data-panel-mode="dashboard-inspector"] #feedback:empty { display:none; }

@@ -5,9 +5,26 @@ const panelPath = "sidepanel/index.html";
 const panelPorts = new Map();
 const dashboardPorts = new Map();
 const tabContexts = new Map();
+// Pins established by an explicit native Save on a tab's current route; they may differ from the route's Pin.
+const capturedContexts = new Map();
 const panelOpenIn = (windowId) => [...panelPorts.values()].includes(windowId);
 const dashboardUrl = chrome.runtime.getURL("dashboard/index.html");
 const isDashboardUrl = value => String(value || "").split(/[?#]/)[0] === dashboardUrl;
+const isPinterestUrl = value => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && /(^|\.)pinterest\.com$/i.test(url.hostname);
+  } catch {
+    return false;
+  }
+};
+// The Side Panel exists only on Pinterest and the Dashboard (ADR-0012). Omitting `path` keeps
+// the one global panel instance, which Chrome hides on disabled tabs and restores on return.
+const panelAllowedFor = url => isPinterestUrl(url) || isDashboardUrl(url);
+function syncPanelAvailability(tab) {
+  if (!Number.isInteger(tab?.id)) return Promise.resolve();
+  return chrome.sidePanel.setOptions({ tabId: tab.id, enabled: panelAllowedFor(tab.url) });
+}
 const dashboardSelectionFor = (tab) => {
   if (!tab || !isDashboardUrl(tab.url)) return null;
   const match=[...dashboardPorts.values()].find(item=>item.tabId===tab.id && item.windowId===tab.windowId);
@@ -135,7 +152,9 @@ async function contextForTab(tab) {
     const latest=await browser.getTab(tab.id);
     if(latest?.url!==tab.url||result?.url!==tab.url)return null;
     const detail=PinRefImportDomain.pageContextForUrl(tab.url);
-    if(detail.kind==="pin"&&result.pinId!==detail.pinId)return {pinId:detail.pinId,previewUrl:null};
+    const captured=capturedContexts.get(tab.id);
+    const explicitSave=captured?.url===tab.url&&captured.pinId===result.pinId;
+    if(detail.kind==="pin"&&result.pinId!==detail.pinId&&!explicitSave)return {pinId:detail.pinId,previewUrl:null};
     return result?.pinId?{pinId:result.pinId,previewUrl:PinRefLibrary.safePreview(result.previewUrl),status:result.status||"unknown"}:result?.identityUnavailable?{identityUnavailable:true}:null;
   } catch {
     const detail=PinRefImportDomain.pageContextForUrl(tab.url);
@@ -158,6 +177,7 @@ async function handleMessage(message, sender) {
     if(tab?.url!==message.url)return {ok:false,reason:"stale-context"};
     await interruptMatching(s=>s.originTabId===tab.id,"native-save");
     const result=await executeSerial({type:"BEGIN_CAPTURE",attemptId:message.attemptId,pinId:message.pinId,tabId:tab.id,documentId:sender.documentId,url:message.url,previewUrl:message.previewUrl},library);
+    if(result.ok)capturedContexts.set(tab.id,{pinId:message.pinId,url:message.url});
     if(result.ok)for(const [port,windowId] of panelPorts)if(windowId===tab.windowId&&tab.active)port.postMessage({type:"capture-started"});
     return result;
   }
@@ -170,15 +190,6 @@ async function handleMessage(message, sender) {
     const attempt=(await repository.readState()).attempts[message.attemptId];
     if(!attempt)return {ok:false};
     return chrome.tabs.sendMessage(attempt.originTabId,{type:"pinref:checkCapture",attemptId:attempt.attemptId},{documentId:attempt.documentId}).catch(()=>({ok:false}));
-  }
-  if(message?.type==="pinref:refreshEvidence"&&(fromPanel||fromDashboard)){
-    const record=(await repository.readState()).references[message.pinId];if(!record)return {ok:false};
-    const tabs=await chrome.tabs.query({});const tab=tabs.find(t=>PinRefImportDomain.pageContextForUrl(t.url).pinId===message.pinId);
-    if(!tab)return {ok:false,reason:"open-original-pin"};
-    await contextForTab(tab);
-    const result=await chrome.tabs.sendMessage(tab.id,{type:"pinref:pinEvidence",pinId:message.pinId}).catch(()=>null);
-    if(!result?.ok||result.pinId!==message.pinId)return {ok:false,reason:"identity-mismatch"};
-    return executeSerial({type:message.field==="preview"?"UPDATE_PREVIEW":"UPDATE_LINK_STATUS",pinId:message.pinId,previewUrl:result.previewUrl,status:result.status,lifecycleRevision:record.lifecycleRevision,generation:record.generation},library);
   }
   if (message?.type === "pinref:getDashboardState" && fromDashboard) {
     const state = await repository.readState();
@@ -194,7 +205,7 @@ async function handleMessage(message, sender) {
   }
   if (message?.type === "pinref:libraryCommand" && (fromDashboard || fromPanel)) {
     const command=message.command || {};
-    const allowed=["SET_PREFERENCE","SAVE_NOTE","CREATE_TAG","ASSIGN_TAG","EDIT_TAG","REORDER_TAGS","DELETE_TAGS","MERGE_TAG","UNDO_TAG_CHANGE","TRASH","RESTORE","PERMANENT_DELETE","COMMIT_CAPTURE","DISMISS_ATTEMPT"];
+    const allowed=["SET_PREFERENCE","SAVE_NOTE","SAVE_NAME","CREATE_TAG","ASSIGN_TAG","EDIT_TAG","REORDER_TAGS","DELETE_TAGS","MERGE_TAG","UNDO_TAG_CHANGE","TRASH","RESTORE","PERMANENT_DELETE","COMMIT_CAPTURE","DISMISS_ATTEMPT"];
     if (!allowed.includes(command.type) || (!fromDashboard && ["TRASH","RESTORE","PERMANENT_DELETE","DELETE_TAGS","MERGE_TAG","REORDER_TAGS","DISMISS_ATTEMPT"].includes(command.type)) || (!fromDashboard&&command.type==="CREATE_TAG"&&!command.pinIds?.length)) return {ok:false,reason:"unavailable-command"};
     return executeSerial(command,library);
   }
@@ -271,8 +282,14 @@ chrome.runtime.onConnect.addListener((port) => {
 
 // The action opens the Inspector in its remembered placement (ADR-0013). Chrome only allows
 // sidePanel.open() synchronously within the click, so the Dashboard placement is read from its port.
+// Elsewhere the Side Panel is unavailable, so the action opens Dashboard instead.
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(console.error);
+chrome.tabs.query({}).then((tabs) => Promise.all(tabs.map(syncPanelAvailability))).catch(console.error);
 chrome.action.onClicked.addListener((tab) => {
+  if (!panelAllowedFor(tab.url)) {
+    chrome.tabs.create({ url: dashboardUrl, windowId: tab.windowId, index: tab.index + 1 }).catch(console.error);
+    return;
+  }
   const dashboard = [...dashboardPorts].find(([, item]) => item.tabId === tab.id && item.windowId === tab.windowId);
   if (dashboard?.[1].placement === "floating") {
     dashboard[0].postMessage({ type: "open-inspector" });
@@ -288,12 +305,13 @@ chrome.sidePanel.onClosed.addListener(({ windowId }) => {
   interruptMatching((session) => session.originWindowId === windowId, "panel-closed").catch(console.error);
 });
 chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
+  if (change.url || change.status === "loading") syncPanelAvailability(tab).catch(console.error);
   if (change.url || change.status === "loading") {
     interruptMatching((session) => session.originTabId === tabId && (change.status === "loading" || PinRefImportDomain.importSurfaceForUrl(tab.url)?.surfaceKey !== session.surfaceKey), "navigation").catch(console.error);
   }
   if (change.url || change.title) notifyPanels();
   if (change.url && tab.active) dockOverDashboard(tab.windowId).catch(console.error);
-  if(change.url)tabContexts.delete(tabId);
+  if(change.url){tabContexts.delete(tabId);capturedContexts.delete(tabId);}
   if(change.status==="loading")executeSerial({type:"INTERRUPT_CAPTURES",tabId},library).catch(console.error);
   if(change.status==="complete")browser.hasPinterestPermission().then(allowed=>{if(allowed)return contextForTab(tab);}).catch(console.error);
 });
@@ -304,6 +322,7 @@ chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
 });
 chrome.tabs.onRemoved.addListener((tabId) => {
   tabContexts.delete(tabId);
+  capturedContexts.delete(tabId);
   executeSerial({type:"INTERRUPT_CAPTURES",tabId},library).catch(console.error);
   interruptMatching((session) => session.originTabId === tabId, "tab-closed").catch(console.error);
   notifyPanels();

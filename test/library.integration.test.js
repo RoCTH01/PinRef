@@ -77,3 +77,14 @@ test("preselected Dashboard Merge links can read and mutate Library; Side Panel 
   assert.equal((await h.message({type:"pinref:libraryCommand",command:{type:"CREATE_TAG",name:"Via Dashboard"}},sender)).ok,true);
   assert.equal((await h.message({type:"pinref:libraryCommand",command:{type:"DISMISS_ATTEMPT",attemptId:"missing"}},{url:h.url("sidepanel/index.html")})).ok,false);
 });
+test("a Reference Name is optional, trimmed, bounded and rejected across Trash",async()=>{
+  const h=await library();const r=(await h.state()).references["123456789"];
+  const name=value=>({type:"SAVE_NAME",pinId:r.pinId,name:value,lifecycleRevision:r.lifecycleRevision,generation:r.generation});
+  assert.equal((await h.command(name("  Warm window light  "))).ok,true);
+  assert.equal((await h.state()).references[r.pinId].name,"Warm window light");
+  assert.equal((await h.command(name("x".repeat(121)))).reason,"invalid-name");
+  assert.equal((await h.command(name(""))).ok,true);
+  assert.equal((await h.state()).references[r.pinId].name,"");
+  assert.equal((await h.command({type:"TRASH",pinIds:[r.pinId]})).ok,true);
+  assert.equal((await h.command(name("After Trash"))).reason,"reference-not-active");
+});

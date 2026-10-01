@@ -8,6 +8,8 @@
   const v={state:null,destination:"library",query:"",tagQuery:"",filter:null,selected:new Set(),tagSelection:new Set(),activeNote:null,
     sidebarOpen:!compact.matches,sortRecent:true,picker:false,pickerQuery:"",tagEditor:null,inspectorClosed:false,inspectorRequested:false,panelConnected:false,message:"",busy:false,position:null,imageRatios:new Map()};
   const notes=createNotes({getState:()=>v.state,changed:()=>render()});
+  const names=PinRefUI.createNames({getState:()=>v.state,changed:()=>render(),feedback:text=>{v.message=text;}});
+  const referenceName=PinRefUI.referenceName;
   const mergeRequest=new URLSearchParams(location.search);
   if(mergeRequest.get("view")==="attention")v.destination="attention";
   const selected=()=>[...v.selected].map(id=>v.state.references[id]).filter(Boolean);
@@ -44,12 +46,12 @@
   const focusAfterRender=selector=>setTimeout(()=>app.querySelector(selector)?.focus(),0);
   function searchHtml(){
     const suggestions=tags().filter(t=>t.name.toLowerCase().includes(v.query.trim().toLowerCase())).slice(0,8);
-    return `<div class="search-box" ${compact.matches&&v.sidebarOpen?"inert":""}><span>⌕</span><input data-search data-focus="search" aria-label="Search Library" placeholder="Search Tags and Notes" value="${e(v.query)}" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="${Boolean(v.suggestions)}" aria-controls="search-suggestions">${v.suggestions?`<div id="search-suggestions" class="search-suggestions" role="listbox" aria-label="Tag suggestions"><div class="suggestion-heading">Filter by Tag</div>${suggestions.map(t=>button(`<i style="--item-color:${e(t.color)}"></i><span>${e(t.name)}</span><small>${tagCount(t.tagId)}</small>`,`data-suggest="${e(t.tagId)}" data-focus="suggest-${e(t.tagId)}" role="option" aria-selected="false"`,"suggestion-item")).join("")||'<p class="muted">No matching Tags. Search still includes committed Notes.</p>'}</div>`:""}</div>`;
+    return `<div class="search-box" ${compact.matches&&v.sidebarOpen?"inert":""}><span>⌕</span><input data-search data-focus="search" aria-label="Search Library" placeholder="Search Names, Tags and Notes" value="${e(v.query)}" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="${Boolean(v.suggestions)}" aria-controls="search-suggestions">${v.suggestions?`<div id="search-suggestions" class="search-suggestions" role="listbox" aria-label="Tag suggestions"><div class="suggestion-heading">Filter by Tag</div>${suggestions.map(t=>button(`<i style="--item-color:${e(t.color)}"></i><span>${e(t.name)}</span><small>${tagCount(t.tagId)}</small>`,`data-suggest="${e(t.tagId)}" data-focus="suggest-${e(t.tagId)}" role="option" aria-selected="false"`,"suggestion-item")).join("")||'<p class="muted">No matching Tags. Search still includes committed Notes.</p>'}</div>`:""}</div>`;
   }
   function filtered() {
     const q=v.query.trim().toLowerCase();
     return Object.values(v.state.references).filter(r=>(!v.filter||r.tags.includes(v.filter))&&(v.destination!=="untagged"||!r.tags.length)&&
-      (!q||`${r.note} ${r.tags.map(id=>v.state.tags[id]?.name||"").join(" ")}`.toLowerCase().includes(q)))
+      (!q||`${r.name||""} ${r.pinId} ${r.note} ${r.tags.map(id=>v.state.tags[id]?.name||"").join(" ")}`.toLowerCase().includes(q)))
       .sort((a,b)=>v.sortRecent?String(b.addedToPinRefAt).localeCompare(a.addedToPinRefAt):String(a.addedToPinRefAt).localeCompare(b.addedToPinRefAt));
   }
   async function act(c) {
@@ -76,17 +78,64 @@
   }
   function trash() {
     const records=Object.values(v.state.trash);
-    return `<section class="needs-attention"><header><h1>Trash</h1><p>References stay until you restore or permanently delete them. Pinterest is unaffected.</p>${records.length?button(`Empty Trash (${records.length})`,"data-empty-trash","quiet-button danger"):""}</header><div class="attempt-list">${records.map(r=>`<article class="attempt-card"><div class="trash-summary">${image(r,"summary-art")}<h2>Pin ${r.pinId}</h2><p>${e(r.note||"No Note")}</p><p>${r.tags.map(id=>e(v.state.tags[id]?.name)).join(" · ")}</p></div><div class="attempt-actions">${button("Restore",`data-restore="${r.pinId}"`)}${button("Permanent Delete",`data-delete="${r.pinId}"`,"quiet-button danger")}</div></article>`).join("")||'<p class="empty-card">Trash is empty.</p>'}</div></section>`;
+    return `<section class="needs-attention"><header><h1>Trash</h1><p>References stay until you restore or permanently delete them. Pinterest is unaffected.</p>${records.length?button(`Empty Trash (${records.length})`,"data-empty-trash","quiet-button danger"):""}</header><div class="attempt-list">${records.map(r=>`<article class="attempt-card"><div class="trash-summary">${image(r,"summary-art")}<h2>${e(referenceName(r))}</h2><p>${e(r.note||"No Note")}</p><p>${r.tags.map(id=>e(v.state.tags[id]?.name)).join(" · ")}</p></div><div class="attempt-actions">${button("Restore",`data-restore="${r.pinId}"`)}${button("Permanent Delete",`data-delete="${r.pinId}"`,"quiet-button danger")}</div></article>`).join("")||'<p class="empty-card">Trash is empty.</p>'}</div></section>`;
   }
   function guide() {return `<section class="empty-card import-guide"><h1>Import from Pinterest</h1><h2>Import beside the collection you want</h2><p>1. Open Saved Pins (the Pins tab) or one concrete Board.</p><p>2. Click the PinRef extension to open its Side Panel.</p><p>3. Start a scan, review candidates, then import your selection.</p><p>No Pins are imported automatically.</p><a class="quiet-button" href="https://www.pinterest.com/" target="_blank" rel="noopener">Open Pinterest ↗</a></section>`;}
   function inspector() {
     // Docked lives only in the Side Panel (ADR-0013); this page renders the Floating Inspector.
     const records=selected(),mode=inspectorOnly?"docked":"floating";
-    if(!inspectorOnly&&(v.state.preferences.inspectorMode==="docked"||v.inspectorClosed||(!records.length&&!v.inspectorRequested)))return "";
+    // A Floating Inspector never coexists with the Side Panel: it appears only after the Side Panel has closed.
+    if(!inspectorOnly&&(v.state.preferences.inspectorMode==="docked"||v.panelConnected||v.inspectorClosed||(!records.length&&!v.inspectorRequested)))return "";
     const active=records.find(r=>r.pinId===v.activeNote)||records[0];
     const common=records.length?records[0].tags.filter(id=>records.every(r=>r.tags.includes(id))):[];
     const placement=v.position&&mode==="floating"&&!compact.matches?`style="left:${v.position.left}px;top:${v.position.top}px;right:auto;bottom:auto"`:"";
-    return `<aside class="inspector-panel ${mode} ${records.length?"":"empty"}" aria-label="Inspector" ${placement}><header class="panel-titlebar draggable-titlebar"><div class="panel-heading"><strong>Inspector</strong><small>${records.length?`${records.length} selected`:"No selection"}</small></div><span class="spacer"></span>${inspectorOnly?"":button("↺",'data-reset-position aria-label="Reset Inspector position"',"panel-toolbar-button")}${button("◫",`data-dock aria-label="${mode==="docked"?"Float":"Dock"} Inspector"`,"panel-toolbar-button")}${inspectorOnly?"":button("×",'data-close-inspector aria-label="Close Inspector"',"panel-toolbar-button")}</header>${!records.length?'<div class="inspector-empty"><span class="inspector-empty-icon">◇</span><strong>Select a Reference</strong><p>Its Tags, Note and source will appear here.</p></div>':`<div class="inspector-body detail-content" data-scroll="inspector"><section class="selection-overview">${records.length>1?`<div class="stacked-thumbnails">${records.slice(0,3).map(r=>image(r,"stack-art")).join("")}</div>`:image(active,"summary-art")}<div class="selection-overview-copy"><h2>${records.length>1?`${records.length} References`:`Pin ${active.pinId}`}</h2><p>In PinRef · saved locally</p></div></section><section class="detail-section"><h3>${records.length>1?"Common Tags":"Tags"}</h3><div class="editable-tag-row">${common.map(id=>`<span class="editable-tag">${button(e(v.state.tags[id]?.name),`data-edit-tag="${e(id)}" data-focus="inspector-edit-${e(id)}" aria-label="Globally rename ${e(v.state.tags[id]?.name)}"`,"tag-name")}${button("×",`data-unassign="${e(id)}" aria-label="Remove ${e(v.state.tags[id]?.name)} from selection"`,"")}</span>`).join("")}${button("+",'data-picker aria-label="Add Tag"',"add-tag-round")}</div>${records.length>1?'<small class="muted">Tag changes apply to all selected References. Notes never do.</small>':""}</section>${records.length>1?`<section class="selection-notes"><h3>Notes</h3><div class="note-tabs">${records.map(r=>button(`<strong>Pin ${r.pinId}</strong><span>${e(r.note||"No Note")}</span>`,`data-note-tab="${r.pinId}" data-focus="note-tab-${r.pinId}" aria-pressed="${active.pinId===r.pinId}"`,`note-tab ${active.pinId===r.pinId?"active":""}`)).join("")}</div><div class="note-preview" data-note-preview><strong>Preview a Note</strong><p>Hover or focus to preview; click to edit only that Reference.</p></div></section>`:""}${notes.html(active.pinId)}<dl class="detail-grid"><dt>Added to PinRef</dt><dd>${e(new Date(active.addedToPinRefAt).toLocaleString())}</dd><dt>Pinterest link</dt><dd>${e(active.linkStatus)}</dd></dl><a class="open-source-button" href="https://www.pinterest.com/pin/${active.pinId}/" target="_blank" rel="noopener">View on Pinterest ↗</a><div class="editor-recovery">${button("Reload preview",`data-preview="${active.pinId}"`)}${button("Check Pinterest status",`data-check="${active.pinId}"`)}</div>${button(`Move ${records.length} to Trash`,"data-trash","quiet-button danger")}<div class="inspector-actions">${button("Clear selection","data-clear-selection","inspector-clear")}</div></div>`}</aside>`;
+    const titlebar = `<header class="panel-titlebar draggable-titlebar">`
+      + `<div class="panel-heading"><strong>Inspector</strong><small>${records.length ? `${records.length} selected` : "No selection"}</small></div>`
+      + `<span class="spacer"></span>`
+      + (inspectorOnly ? "" : button("↺", 'data-reset-position aria-label="Reset Inspector position"', "panel-toolbar-button"))
+      + button("◫", `data-dock aria-label="${mode === "docked" ? "Float" : "Dock"} Inspector"`, "panel-toolbar-button")
+      + (inspectorOnly ? "" : button("×", 'data-close-inspector aria-label="Close Inspector"', "panel-toolbar-button"))
+      + `</header>`;
+    if (!records.length) {
+      return `<aside class="inspector-panel ${mode} empty" aria-label="Inspector" ${placement}>${titlebar}`
+        + `<div class="inspector-empty"><span class="inspector-empty-icon">◇</span><strong>Select a Reference</strong><p>Its Tags, Note and source will appear here.</p></div></aside>`;
+    }
+    const multiple = records.length > 1;
+    const overview = `<section class="selection-overview">`
+      + (multiple ? `<div class="stacked-thumbnails">${records.slice(0, 3).map(r => image(r, "stack-art")).join("")}</div>` : image(active, "summary-art"))
+      + `<div class="selection-overview-copy">${multiple ? `<h2>${records.length} References</h2>` : names.html(active)}<p>In PinRef · saved locally</p></div></section>`;
+    const tagChips = common.map(id => {
+      const name = e(v.state.tags[id]?.name);
+      return `<span class="editable-tag">${button(name, `data-edit-tag="${e(id)}" data-focus="inspector-edit-${e(id)}" aria-label="Globally rename ${name}"`, "tag-name")}`
+        + `${button("×", `data-unassign="${e(id)}" aria-label="Remove ${name} from selection"`, "")}</span>`;
+    }).join("");
+    const tagSection = `<section class="detail-section"><h3>${multiple ? "Common Tags" : "Tags"}</h3>`
+      + `<div class="editable-tag-row">${tagChips}${button("+", 'data-picker aria-label="Add Tag"', "add-tag-round")}</div>`
+      + (multiple ? '<small class="muted">Tag changes apply to all selected References. Notes never do.</small>' : "")
+      + `</section>`;
+    const noteTabs = multiple
+      ? `<section class="selection-notes"><h3>Notes</h3><div class="note-tabs">`
+        + records.map(r => button(`<strong>${e(referenceName(r))}</strong><span>${e(r.note || "No Note")}</span>`,
+          `data-note-tab="${r.pinId}" data-focus="note-tab-${r.pinId}" aria-pressed="${active.pinId === r.pinId}"`,
+          `note-tab ${active.pinId === r.pinId ? "active" : ""}`)).join("")
+        + `</div><div class="note-preview" data-note-preview><strong>Preview a Note</strong><p>Hover or focus to preview; click to edit only that Reference.</p></div></section>`
+      : "";
+    return `<aside class="inspector-panel ${mode}" aria-label="Inspector" ${placement}>${titlebar}`
+      + `<div class="inspector-body detail-content" data-scroll="inspector">${overview}${tagSection}${noteTabs}${notes.html(active.pinId)}`
+      + `<dl class="detail-grid"><dt>Added to PinRef</dt><dd>${e(new Date(active.addedToPinRefAt).toLocaleString())}</dd></dl>`
+      + `<a class="open-source-button" href="https://www.pinterest.com/pin/${active.pinId}/" target="_blank" rel="noopener">View on Pinterest ↗</a>`
+      + button(`Move ${records.length} to Trash`, "data-trash", "quiet-button danger")
+      + `<div class="inspector-actions">${button("Clear selection", "data-clear-selection", "inspector-clear")}</div></div></aside>`;
+  }
+  // A dragged Floating Inspector keeps its position only while it fits; growing content or a smaller window pulls it back on screen.
+  function keepOnScreen(panel) {
+    if(!v.position||!panel.classList.contains("floating")||compact.matches)return;
+    const box=panel.getBoundingClientRect();
+    const left=Math.max(8,Math.min(innerWidth-box.width-8,v.position.left));
+    const top=Math.max(8,Math.min(innerHeight-box.height-8,v.position.top));
+    if(left===v.position.left&&top===v.position.top)return;
+    v.position={left,top};
+    Object.assign(panel.style,{left:`${left}px`,top:`${top}px`});
   }
   function picker() {
     if(!v.picker)return "";
@@ -111,9 +160,11 @@
       feedback.querySelector("[data-undo]")?.addEventListener("click",()=>act({type:"UNDO_TAG_CHANGE",receiptId:v.receiptId}).then(()=>{v.receiptId=null;}));
       feedback.querySelector("[data-retry-library]")?.addEventListener("click",()=>act(v.retryCommand));
       feedback.querySelector("[data-dismiss-feedback]")?.addEventListener("click",()=>{v.message="";v.retryCommand=null;render();});
-      bind();notes.bind(app);
+      bind();notes.bind(app);names.bind(app);
     });
-    const inspectorEl=app.querySelector(".inspector-panel");if(inspectorEl)drag(inspectorEl,inspectorEl.querySelector("header"),()=>!compact.matches&&v.state.preferences.inspectorMode==="floating",position=>{v.position=position;});
+    const inspectorEl=app.querySelector(".inspector-panel");
+    if(inspectorEl)keepOnScreen(inspectorEl);
+    if(inspectorEl)drag(inspectorEl,inspectorEl.querySelector("header"),()=>!compact.matches&&v.state.preferences.inspectorMode==="floating",position=>{v.position=position;});
     const pickerEl=app.querySelector(".tag-picker");if(pickerEl){
       const rect=pickerEl.getBoundingClientRect(),anchor=v.pickerAnchor||{left:innerWidth-rect.width-24,top:80,bottom:100};
       const proposed=v.pickerPosition||{left:anchor.left,top:anchor.bottom+rect.height+12<=innerHeight?anchor.bottom+8:anchor.top-rect.height-8};
@@ -177,7 +228,7 @@
     on("[data-close-inspector]",async()=>{await notes.flush();v.inspectorClosed=true;v.inspectorRequested=false;render();app.querySelector(`[data-select="${v.anchor}"]`)?.focus();});
     on("[data-reset-position]",()=>{v.position=null;render();});
     on("[data-note-tab]",async el=>{await notes.flush();v.activeNote=el.dataset.noteTab;render();});
-    const preview=el=>{const r=v.state.references[el.dataset.noteTab];app.querySelector("[data-note-preview]").innerHTML=`<strong>Pin ${r.pinId}</strong><p>${e(r.note||"No Note")}</p>`;};on("[data-note-tab]",preview,"mouseenter");on("[data-note-tab]",preview,"focus");
+    const preview=el=>{const r=v.state.references[el.dataset.noteTab];app.querySelector("[data-note-preview]").innerHTML=`<strong>${e(referenceName(r))}</strong><p>${e(r.note||"No Note")}</p>`;};on("[data-note-tab]",preview,"mouseenter");on("[data-note-tab]",preview,"focus");
     on("[data-picker]",el=>{v.picker=true;v.pickerQuery="";v.pickerPosition=null;const rect=el.getBoundingClientRect();v.pickerAnchor={left:rect.left,top:rect.top,bottom:rect.bottom};render();focusAfterRender("[data-picker-query]");});
     on("[data-close-picker]",()=>{v.picker=false;render();app.querySelector("[data-picker]")?.focus();});
     on("[data-picker-query]",el=>{v.pickerQuery=el.value;render();},"input");
@@ -199,7 +250,7 @@
     on("[data-trash]",async()=>{if(!await notes.flush()){v.message="A Note change could not be saved. Retry it, or cancel moving to Trash.";render();return;}const ids=[...v.selected];if(confirm(`Move ${ids.length} References to Trash? Pinterest is unaffected.`)){const r=await act(PinRefUI.lifecycleCommand(v.state,"TRASH",ids));if(r.ok){v.selected.clear();render();}}});
     on("[data-restore]",el=>act(PinRefUI.lifecycleCommand(v.state,"RESTORE",[el.dataset.restore])));const remove=ids=>{if(confirm(`Permanently delete ${ids.length} References? This cannot be undone. Pinterest is unaffected.`))act(PinRefUI.lifecycleCommand(v.state,"PERMANENT_DELETE",ids));};on("[data-delete]",el=>remove([el.dataset.delete]));on("[data-empty-trash]",()=>remove(Object.keys(v.state.trash)));
     on("[data-capture-retry]",el=>act({type:"COMMIT_CAPTURE",attemptId:el.dataset.captureRetry}));on("[data-dismiss-attempt]",el=>act({type:"DISMISS_ATTEMPT",attemptId:el.dataset.dismissAttempt}));
-    on("[data-capture-check]",el=>evidence({type:"pinref:checkCapture",attemptId:el.dataset.captureCheck}));on("[data-preview]",el=>evidence({type:"pinref:refreshEvidence",pinId:el.dataset.preview,field:"preview"}));on("[data-check]",el=>evidence({type:"pinref:refreshEvidence",pinId:el.dataset.check,field:"link"}));
+    on("[data-capture-check]",el=>evidence({type:"pinref:checkCapture",attemptId:el.dataset.captureCheck}));
   }
   async function evidence(message){try{const r=await chrome.runtime.sendMessage(message);v.message=r.ok?"Evidence refreshed from the open Pinterest Pin":"Open this Pin in its original Pinterest tab and try again. Saved metadata is unchanged.";}catch{v.message="Could not refresh evidence. Saved metadata is unchanged.";}await load();}
   async function load() {
@@ -217,14 +268,19 @@
   window.addEventListener("message",async event=>{
     if(!inspectorOnly||event.source!==window.parent||event.origin!==(location.protocol==="file:"?"null":location.origin))return;
     if(event.data?.type==="pinref:inspector-flush"){
-      await notes.flush();
+      await Promise.all([notes.flush(),names.flush()]);
       event.source.postMessage({type:"pinref:inspector-flushed"},location.protocol==="file:"?"*":location.origin);
       return;
     }
     if(event.data?.type!=="pinref:inspector-selection")return;
-    const ids=Array.isArray(event.data.pinIds)?event.data.pinIds.filter(id=>v.state?.references?.[id]):[];
-    v.selected=new Set(ids);v.activeNote=ids.includes(event.data.activePinId)?event.data.activePinId:ids[0]||null;render();
+    // The selection can arrive before this iframe's first Library load; load() drops ids that are not References.
+    const requested=Array.isArray(event.data.pinIds)?event.data.pinIds.filter(id=>typeof id==="string"):[];
+    const ids=v.state?requested.filter(id=>v.state.references[id]):requested;
+    v.selected=new Set(ids);
+    v.activeNote=ids.includes(event.data.activePinId)?event.data.activePinId:ids[0]||null;
+    render();
   });
+  window.addEventListener("resize",()=>{const panel=app.querySelector(".inspector-panel.floating");if(panel)keepOnScreen(panel);});
   compact.addEventListener("change",()=>{v.sidebarOpen=!compact.matches;v.position=null;render();});
   chrome.storage.onChanged.addListener((changes,area)=>{if(area==="local"&&changes.pinrefState)load();});load();connectDashboard();
 })();

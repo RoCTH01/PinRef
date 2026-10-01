@@ -13,8 +13,16 @@
   </head>
   <body>
     <a class="skip-link" href="#panel-main">Skip to content</a>
-    <header class="panel-header"><strong>PinRef</strong><nav aria-label="PinRef"><a href="../dashboard/index.html" target="_blank" rel="noopener">Dashboard <span class="sr-only">(opens a new tab)</span></a><button class="button quiet" id="theme" aria-label="Switch color theme">◐</button></nav></header>
-    <main id="panel-main" tabindex="-1" class="inspector-panel sidepanel-inspector" aria-label="PinRef Side Panel"><header class="panel-titlebar"><div class="panel-heading"><h1 id="mode-heading">PinRef</h1><small id="mode-context">Current page</small></div></header><div id="panel-content" class="inspector-body"><p>Connecting to PinRef…</p></div></main>
+    <main id="panel-main" tabindex="-1" class="inspector-panel sidepanel-inspector" aria-label="PinRef Inspector">
+      <header class="panel-titlebar">
+        <div class="panel-heading"><h1 id="mode-heading">PinRef</h1><small id="mode-context">Current page</small></div>
+        <nav class="panel-toolbar" aria-label="PinRef">
+          <a class="open-source-button" href="../dashboard/index.html" target="_blank" rel="noopener">Dashboard ↗<span class="sr-only"> (opens a new tab)</span></a>
+          <button class="panel-toolbar-button" id="theme" aria-label="Switch color theme">◐</button>
+        </nav>
+      </header>
+      <div id="panel-content" class="inspector-body"><p>Connecting to PinRef…</p></div>
+    </main>
     <p id="feedback" role="status" aria-live="polite" aria-atomic="true"></p>
     <footer class="panel-footer">Stored in this browser profile. PinRef is an independent project, not affiliated with Pinterest.</footer>
     <script src="../library/ui.js"></script>
