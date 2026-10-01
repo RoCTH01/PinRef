@@ -34,6 +34,7 @@ Product truth is spread across `CONTEXT.md`, `docs/adr/`, `docs/product/crud-dec
 - `npm test` and `npm run typecheck` pass (typecheck is syntax-only).
 - `npm run test:browser` also passes when `sidepanel/`, `dashboard/`, `content/` or `library/ui.js` changed. If Playwright's bundled Chromium is missing, point `PINREF_BROWSER` at an installed Chrome (macOS: `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`) instead of downloading browsers.
 - Browser checks load pages from `file://`, where `postMessage` origins are `"null"`; code that checks origins needs the same `file:` allowance `panel.js` and `dashboard.js` use.
+- Every new assertion has been seen red: break the code it covers and confirm that assertion is the one that fails. `docs/agents/testing.md` has the ways an assertion dies quietly, plus the vm-realm, command-channel, locator and `persist:false` traps in the worker fixture and browser checks.
 - Fixture and browser checks never establish real-Pinterest behavior. Report the signed-in Chrome/Pinterest matrix in `extension/README.md` as unvalidated rather than claiming it.
 
 ## Issues
