@@ -217,3 +217,46 @@ test("Side Panel availability is reconciled on tab activation and creation, and 
   assert.equal(JSON.stringify(h.chrome.sidePanel.opened),JSON.stringify([{windowId:7}]),"the action still opens the Side Panel on Pinterest");
   h.tabs.delete(52);h.tabs.delete(53);
 });
+
+test("Capture Attempts stay aligned with the Library: no Attempt for an existing Reference, and an Attempt resolves when its Pin arrives or leaves Trash",async()=>{
+  const h=createBrowser();
+  const sender={tab:h.tabs.get(41),documentId:"doc-a",frameId:0,url:h.tabs.get(41).url};
+  const capture=async(attemptId,pinId,confirmed)=>{
+    const started=await h.message({type:"pinref:captureStarted",attemptId,pinId,url:h.tabs.get(41).url},sender);
+    await h.message({type:"pinref:captureEvidence",attemptId,pinId,confirmed},sender);
+    return started;
+  };
+  const attempts=async()=>Object.values((await h.state()).attempts).map(a=>`${a.pinId}:${a.status}`).sort();
+
+  // A Save that Pinterest never confirms leaves a retryable Attempt.
+  await capture("capture-1","123456789",false);
+  assert.equal(JSON.stringify(await attempts()),JSON.stringify(["123456789:unconfirmed"]));
+
+  // Importing that Pin answers the Attempt: the Reference the user wanted now exists.
+  const {session}=await h.command({type:"START",tabId:41});
+  await h.scan(session,"OBSERVE_BATCH",[{pinId:"123456789"}]);
+  await h.command({type:"STOP_REVIEW",sessionId:session.sessionId});
+  await h.command({type:"SELECT_ALL_NEW",sessionId:session.sessionId});
+  await h.command({type:"IMPORT_SELECTED",sessionId:session.sessionId});
+  assert.equal(JSON.stringify(await attempts()),JSON.stringify([]),"an Attempt whose Pin is now a Reference is resolved");
+
+  // Saving again on Pinterest for a Pin already in the Library is a no-op, never a new Attempt.
+  // Refusing the start is what stops the content script observing Pinterest for an outcome PinRef
+  // would discard, so the no-op has to be visible in the answer, not only in the absence of state.
+  assert.equal((await capture("capture-2","123456789",false)).ok,false,"a repeated Save for an existing Reference starts nothing");
+  assert.equal(JSON.stringify(await attempts()),JSON.stringify([]));
+
+  // A Pin in Trash is different: PinRef says so rather than silently resurrecting it.
+  const lifecycle=async(type,pinId)=>{
+    const record=(await h.state())[type==="TRASH"?"references":"trash"][pinId];
+    return h.message({type:"pinref:libraryCommand",command:{type,pinIds:[pinId],
+      bases:{[pinId]:{generation:record.generation,lifecycleRevision:record.lifecycleRevision}}}},{url:h.url("dashboard/index.html")});
+  };
+  await lifecycle("TRASH","123456789");
+  await capture("capture-3","123456789",true);
+  assert.equal(JSON.stringify(await attempts()),JSON.stringify(["123456789:in-trash"]));
+
+  // Restoring it from Trash answers that Attempt too.
+  await lifecycle("RESTORE","123456789");
+  assert.equal(JSON.stringify(await attempts()),JSON.stringify([]),"an in-Trash Attempt is resolved once its Pin is restored");
+});

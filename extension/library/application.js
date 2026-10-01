@@ -142,6 +142,9 @@
           case "BEGIN_CAPTURE": {
             if (!/^\d{6,}$/.test(c.pinId) || !c.attemptId || !Number.isInteger(c.tabId)) return fail("invalid-capture");
             if (state.attempts[c.attemptId]) return fail("attempt-exists");
+            // A repeated Save for an existing Reference is a no-op (ADR-0001). Refusing here stops
+            // the content script observing Pinterest for an outcome PinRef would discard.
+            if (state.references[c.pinId]) return fail("reference-exists");
             state.attempts[c.attemptId]={attemptId:c.attemptId,pinId:c.pinId,originTabId:c.tabId,documentId:c.documentId,url:c.url,
               previewUrl:safePreview(c.previewUrl),status:"pending",createdAt:now()}; break;
           }

@@ -17,7 +17,7 @@ The collection of committed References available for management and retrieval in
 _Avoid_: Capture queue, Pinterest saves
 
 **Needs Attention**:
-The Dashboard page for identity-known Capture Attempts that are unconfirmed or whose local write failed. It excludes committed References, unidentified Pinterest content, and general notifications.
+The Dashboard page for identity-known Capture Attempts that are unconfirmed or whose local write failed. It excludes committed References, unidentified Pinterest content, and general notifications. A Capture Attempt is resolved the moment its Pin becomes a Reference or leaves Trash, whichever path got it there, so the page never lists a Pin the Library already holds.
 _Avoid_: Unknown content, Library, Trash, notification center
 
 **Inspector**:

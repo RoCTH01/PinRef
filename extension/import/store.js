@@ -47,11 +47,16 @@
     }));
     const references = records(state.references);
     const trash = records(state.trash);
+    // A Capture Attempt only exists while its Reference does not. Resolving them here, rather than
+    // in each command, keeps Needs Attention aligned however the Reference arrived or the Trash
+    // entry left: Import, Capture, Restore and Permanent Delete all answer an Attempt.
+    const attempts = Object.fromEntries(Object.entries(state.attempts || {}).filter(([, attempt]) =>
+      !references[attempt.pinId] && !(attempt.status === "in-trash" && !trash[attempt.pinId])));
     return {
       version: SCHEMA_VERSION,
       references, trash, tags,
       tagOrder: [...new Set([...(state.tagOrder || []), ...Object.keys(tags)])].filter(id=>tags[id]),
-      attempts: structuredClone(state.attempts || {}),
+      attempts: structuredClone(attempts),
       preferences: {theme:"dark", galleryMode:"waterfall", inspectorMode:"floating", ...state.preferences},
       libraryRevision: state.libraryRevision || 0,
       receipt: state.receipt || null,

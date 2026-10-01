@@ -35,6 +35,10 @@ const {createBrowser}=require("./browser-fixture.cjs");
       return page;
     };
 
+    const PinRefLifecycle=(state,type,pinId)=>{
+      const record=state[type==="TRASH"?"references":"trash"][pinId];
+      return {type,pinIds:[pinId],bases:{[pinId]:{generation:record.generation,lifecycleRevision:record.lifecycleRevision}}};
+    };
     const {session}=await h.command({type:"START",tabId:41});
     await h.scan(session,"OBSERVE_BATCH",[{pinId:"123456789"},{pinId:"987654321"},{pinId:"555555555"}]);
     await h.command({type:"STOP_REVIEW",sessionId:session.sessionId});
@@ -185,8 +189,42 @@ const {createBrowser}=require("./browser-fixture.cjs");
     assert.equal(Object.keys((await state()).trash).length,0);
     assert.equal(Object.keys((await state()).references).length,2,"a permanent delete never touches the Library");
 
+    // Needs Attention collects Capture Attempts that never became References. A confirmed Save whose
+    // local write never landed offers Retry; an unconfirmed one offers Check again and Dismiss.
+    const sender={tab:h.tabs.get(41),documentId:"doc-a",frameId:0,url:h.tabs.get(41).url};
+    const attempt=async(attemptId,pinId,confirmed)=>{
+      await h.message({type:"pinref:captureStarted",attemptId,pinId,url:h.tabs.get(41).url},sender);
+      await h.message({type:"pinref:captureEvidence",attemptId,pinId,confirmed},sender);
+      notify();
+    };
+    await attempt("attempt-unconfirmed","222222222",false);
+    await attempt("attempt-confirmed","333333333",true);
+    // A confirmed Save commits straight away, so stage the local failure by trashing it afterwards.
+    await h.message({type:"pinref:libraryCommand",command:PinRefLifecycle(await state(),"TRASH","333333333")},{url:h.url("dashboard/index.html")});
+    notify();
+    await attempt("attempt-in-trash","333333333",true);
+
+    await page.locator('[data-destination="attention"]').click();
+    await page.waitForFunction(()=>document.querySelectorAll(".attempt-card").length===2);
+    assert.equal(await page.getByText("Save not confirmed. No Reference was added.").count(),1);
+    assert.equal(await page.getByText("In Trash · restore from Trash if wanted").count(),1);
+
+    // Restoring the Pin answers its Attempt without the user visiting Needs Attention.
+    await page.locator('[data-destination="trash"]').click();
+    await page.waitForFunction(()=>document.querySelectorAll("[data-restore]").length===1);
+    await page.getByRole("button",{name:"Restore",exact:true}).click();
+    await page.locator('[data-destination="attention"]').click();
+    await page.waitForFunction(()=>document.querySelectorAll(".attempt-card").length===1);
+    assert.equal(Object.keys((await state()).attempts).length,1,"a restored Pin resolves its Attempt");
+
+    // Dismiss removes only the Attempt, and the Pin it names never entered the Library.
+    await page.getByRole("button",{name:"Dismiss",exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector(".empty-card")?.textContent==="Nothing needs attention.");
+    assert.equal(Object.keys((await state()).attempts).length,0);
+    assert.equal((await state()).references["222222222"],undefined,"Dismiss never creates a Reference");
+
     assert.deepEqual(errors,[]);
-    console.log("PASS: Dashboard Tag picker, global Tag editor, guarded delete, Undo, search and Trash");
+    console.log("PASS: Dashboard Tag picker, global Tag editor, guarded delete, Undo, search, Trash and Needs Attention");
   } catch(error) {
     for(const page of pages.keys())if(!page.isClosed())await page.screenshot({path:"/tmp/pinref-dashboard-library.png"});
     throw error;
