@@ -6,7 +6,7 @@
   if(inspectorOnly)document.body.classList.add("inspector-embed");
   let dashboardPort=null,dashboardWindowId=null,dashboardTabId=null,closing=false;
   const v={state:null,destination:"library",query:"",tagQuery:"",filter:null,selected:new Set(),tagSelection:new Set(),activeNote:null,
-    sidebarOpen:!compact.matches,sortRecent:true,picker:false,pickerQuery:"",tagEditor:null,inspectorClosed:false,panelConnected:false,message:"",busy:false,position:null,imageRatios:new Map()};
+    sidebarOpen:!compact.matches,sortRecent:true,picker:false,pickerQuery:"",tagEditor:null,inspectorClosed:false,inspectorRequested:false,panelConnected:false,message:"",busy:false,position:null,imageRatios:new Map()};
   const notes=createNotes({getState:()=>v.state,changed:()=>render()});
   const mergeRequest=new URLSearchParams(location.search);
   if(mergeRequest.get("view")==="attention")v.destination="attention";
@@ -16,11 +16,16 @@
   const button=(text,attr,cls="quiet-button")=>`<button class="${cls}" ${attr}>${text}</button>`;
   function publishSelection(){
     if(inspectorOnly||!dashboardPort||!v.state||!Number.isInteger(dashboardWindowId)||!Number.isInteger(dashboardTabId))return;
-    try{dashboardPort.postMessage({windowId:dashboardWindowId,tabId:dashboardTabId,pinIds:[...v.selected],activePinId:v.activeNote});}catch{/* Reconnect restores the current selection. */}
+    try{dashboardPort.postMessage({windowId:dashboardWindowId,tabId:dashboardTabId,pinIds:[...v.selected],activePinId:v.activeNote,placement:v.state.preferences.inspectorMode});}catch{/* Reconnect restores the current selection. */}
   }
   function openNativeInspector(){
     if(inspectorOnly||v.panelConnected||!Number.isInteger(dashboardWindowId)||!chrome.sidePanel?.open)return;
-    chrome.sidePanel.open({windowId:dashboardWindowId}).catch(()=>{v.message="Could not open the Side Panel. The Inspector remains available here.";render();});
+    chrome.sidePanel.open({windowId:dashboardWindowId}).catch(()=>{v.message="Could not open the Docked Inspector. Choose Float Inspector to view it on this page.";render();});
+  }
+  async function closeNativeInspector(){
+    if(!chrome.sidePanel?.close)return;
+    const windowId=inspectorOnly?(await chrome.windows.getCurrent()).id:dashboardWindowId;
+    if(Number.isInteger(windowId))chrome.sidePanel.close({windowId}).catch(()=>{});
   }
   async function connectDashboard(){
     if(inspectorOnly||closing||dashboardPort||!chrome.runtime?.connect||!chrome.tabs?.getCurrent||!chrome.windows?.getCurrent)return;
@@ -31,6 +36,7 @@
     port.onMessage.addListener(message=>{
       if(message.type==="panel-visibility"&&v.panelConnected!==Boolean(message.open)){v.panelConnected=Boolean(message.open);render();}
       if(message.type==="clear-selection"){v.selected.clear();v.activeNote=null;render();}
+      if(message.type==="open-inspector"&&v.state?.preferences.inspectorMode==="floating"){v.inspectorClosed=false;v.inspectorRequested=true;render();}
     });
     port.onDisconnect.addListener(()=>{if(dashboardPort===port)dashboardPort=null;v.panelConnected=false;if(!closing){render();setTimeout(connectDashboard,500);}});
     publishSelection();
@@ -49,7 +55,7 @@
   async function act(c) {
     if(v.busy)return {ok:false};
     v.busy=true;const result=await command(c);v.busy=false;
-    v.message=result.ok?"Saved locally":({"drafts-pending":"Resolve or discard the Note draft before moving to Trash.","stale-assignment":"This assignment changed elsewhere. Review and retry.","undo-expired-or-stale":"Undo is no longer safe. Newer changes were preserved.","tag-name-exists":"That Tag exists. Use the separate Merge action."}[result.reason]||`Could not save: ${result.reason||"connection unavailable"}. Try again.`);
+    v.message=result.ok?"Saved locally":({"stale-assignment":"This assignment changed elsewhere. Review and retry.","undo-expired-or-stale":"Undo is no longer safe. Newer changes were preserved.","tag-name-exists":"That Tag exists. Use the separate Merge action."}[result.reason]||`Could not save: ${result.reason||"connection unavailable"}. Try again.`);
     v.retryCommand=result.ok?null:c;
     clearTimeout(v.feedbackTimer);
     if(result.ok)v.feedbackTimer=setTimeout(()=>{v.message="";render();},result.receiptId?15000:3000);
@@ -74,8 +80,9 @@
   }
   function guide() {return `<section class="empty-card import-guide"><h1>Import from Pinterest</h1><h2>Import beside the collection you want</h2><p>1. Open Saved Pins (the Pins tab) or one concrete Board.</p><p>2. Click the PinRef extension to open its Side Panel.</p><p>3. Start a scan, review candidates, then import your selection.</p><p>No Pins are imported automatically.</p><a class="quiet-button" href="https://www.pinterest.com/" target="_blank" rel="noopener">Open Pinterest ↗</a></section>`;}
   function inspector() {
-    const records=selected(),mode=v.state.preferences.inspectorMode;
-    if((!records.length&&mode!=="docked")||v.inspectorClosed||(!inspectorOnly&&mode==="docked"&&v.panelConnected))return "";
+    // Docked lives only in the Side Panel (ADR-0013); this page renders the Floating Inspector.
+    const records=selected(),mode=inspectorOnly?"docked":"floating";
+    if(!inspectorOnly&&(v.state.preferences.inspectorMode==="docked"||v.inspectorClosed||(!records.length&&!v.inspectorRequested)))return "";
     const active=records.find(r=>r.pinId===v.activeNote)||records[0];
     const common=records.length?records[0].tags.filter(id=>records.every(r=>r.tags.includes(id))):[];
     const placement=v.position&&mode==="floating"&&!compact.matches?`style="left:${v.position.left}px;top:${v.position.top}px;right:auto;bottom:auto"`:"";
@@ -95,9 +102,9 @@
     if(PinRefUI.deferRender(render))return;
     const galleryScroll=app.querySelector('[data-scroll="gallery"]')?.scrollTop;
     document.documentElement.dataset.theme=v.state.preferences.theme;
-    const libraryView=["library","recent","untagged"].includes(v.destination),docked=v.state.preferences.inspectorMode==="docked"&&!v.inspectorClosed&&libraryView&&!v.panelConnected&&!inspectorOnly;
+    const libraryView=["library","recent","untagged"].includes(v.destination);
     preserveRender(app,()=>{
-      app.innerHTML=inspectorOnly ? `${inspector()}${picker()}${tagEditor()}` : `<div class="workspace ${v.sidebarOpen?"":"sidebar-closed"} ${docked?"inspector-docked-layout":""}">${sidebar()}${button("",'data-close aria-label="Close sidebar" tabindex="-1"',"sidebar-backdrop")}<div class="anchored-topbar">${button("☰",`data-open aria-label="${v.sidebarOpen?"Close":"Open"} sidebar" aria-expanded="${v.sidebarOpen}"`,"sidebar-toggle")}${libraryView?searchHtml():""}</div><main id="main-content" tabindex="-1" class="contact ${docked?"inspector-docked":""}" data-scroll="gallery" ${compact.matches&&v.sidebarOpen?"inert":""}>${libraryView?gallery():v.destination==="attention"?attention():v.destination==="trash"?trash():guide()}</main>${libraryView?inspector():""}${picker()}${tagEditor()}</div>`;
+      app.innerHTML=inspectorOnly ? `${inspector()}${picker()}${tagEditor()}` : `<div class="workspace ${v.sidebarOpen?"":"sidebar-closed"}">${sidebar()}${button("",'data-close aria-label="Close sidebar" tabindex="-1"',"sidebar-backdrop")}<div class="anchored-topbar">${button("☰",`data-open aria-label="${v.sidebarOpen?"Close":"Open"} sidebar" aria-expanded="${v.sidebarOpen}"`,"sidebar-toggle")}${libraryView?searchHtml():""}</div><main id="main-content" tabindex="-1" class="contact" data-scroll="gallery" ${compact.matches&&v.sidebarOpen?"inert":""}>${libraryView?gallery():v.destination==="attention"?attention():v.destination==="trash"?trash():guide()}</main>${libraryView?inspector():""}${picker()}${tagEditor()}</div>`;
       document.querySelector("#announcements").textContent=v.message;
       const feedback=document.querySelector("#visible-feedback");feedback.hidden=!v.message;
       feedback.innerHTML=v.message?`${e(v.message)} ${v.receiptId?button("Undo Tag change","data-undo"):""}${v.retryCommand?button("Retry","data-retry-library"):""}${button("×",'data-dismiss-feedback aria-label="Dismiss message"')}`:"";
@@ -125,7 +132,7 @@
     if(galleryScroll!==undefined)app.querySelector('[data-scroll="gallery"]')?.scrollTo(0,galleryScroll);
     publishSelection();
   }
-  async function changeFilter(update){await notes.flush();v.selected.clear();v.activeNote=null;v.picker=false;update();render();}
+  async function changeFilter(update){await notes.flush();v.selected.clear();v.activeNote=null;v.inspectorRequested=false;v.picker=false;update();render();}
   async function closeTagEditor(){await saveTagName();v.tagEditor=null;render();const opener=app.querySelector(`[data-focus="${CSS.escape(v.tagOpener||"")}"]`);(opener&&!opener.closest("[inert]")?opener:app.querySelector("[data-open]"))?.focus();}
   async function saveTagName() {
     const edit=v.tagEditor;if(!edit)return true;if(edit.saving)return edit.saving;
@@ -156,11 +163,18 @@
     on("[data-sort]",()=>{v.sortRecent=!v.sortRecent;render();});
     on("[data-layout]",el=>act({type:"SET_PREFERENCE",key:"galleryMode",value:el.dataset.layout}));
     on("[data-theme]",()=>act({type:"SET_PREFERENCE",key:"theme",value:v.state.preferences.theme==="dark"?"light":"dark"}));
-    on("[data-dock]",async()=>{const toDock=v.state.preferences.inspectorMode==="floating";if(toDock)openNativeInspector();v.inspectorClosed=false;v.position=null;const result=await act({type:"SET_PREFERENCE",key:"inspectorMode",value:toDock?"docked":"floating"});if(result.ok&&!toDock&&inspectorOnly&&chrome.sidePanel?.close){const window=await chrome.windows.getCurrent();chrome.sidePanel.close({windowId:window.id}).catch(()=>{});}});
+    on("[data-dock]",async()=>{
+      const toDock=v.state.preferences.inspectorMode==="floating";
+      if(toDock)openNativeInspector();
+      v.inspectorClosed=false;v.inspectorRequested=!toDock;v.position=null;
+      const result=await act({type:"SET_PREFERENCE",key:"inspectorMode",value:toDock?"docked":"floating"});
+      // A Floating Inspector never coexists with an open Side Panel.
+      if(result.ok&&!toDock)closeNativeInspector();
+    });
     on("[data-select]",async(el,ev)=>{if(v.state.preferences.inspectorMode==="docked")openNativeInspector();await notes.flush();const id=el.dataset.select;if(ev.shiftKey&&v.anchor){const ids=filtered().map(r=>r.pinId),a=ids.indexOf(v.anchor),b=ids.indexOf(id);if(a>=0)ids.slice(Math.min(a,b),Math.max(a,b)+1).forEach(id=>v.selected.add(id));}else if(ev.metaKey||ev.ctrlKey){if(v.selected.has(id))v.selected.delete(id);else v.selected.add(id);}else v.selected=v.selected.size===1&&v.selected.has(id)?new Set():new Set([id]);v.anchor=id;v.inspectorClosed=false;v.activeNote=id;render();});
     on("[data-clear-selection]",()=>{if(inspectorOnly){chrome.windows.getCurrent().then(window=>chrome.runtime.sendMessage({type:"pinref:clearDashboardSelection",windowId:window.id}));v.selected.clear();v.activeNote=null;render();}else changeFilter(()=>{});});
     on("[data-toggle-select]",async el=>{if(v.state.preferences.inspectorMode==="docked")openNativeInspector();await notes.flush();const id=el.dataset.toggleSelect;if(v.selected.has(id))v.selected.delete(id);else v.selected.add(id);v.anchor=id;v.activeNote=id;v.inspectorClosed=false;render();});
-    on("[data-close-inspector]",async()=>{await notes.flush();v.inspectorClosed=true;render();app.querySelector(`[data-select="${v.anchor}"]`)?.focus();});
+    on("[data-close-inspector]",async()=>{await notes.flush();v.inspectorClosed=true;v.inspectorRequested=false;render();app.querySelector(`[data-select="${v.anchor}"]`)?.focus();});
     on("[data-reset-position]",()=>{v.position=null;render();});
     on("[data-note-tab]",async el=>{await notes.flush();v.activeNote=el.dataset.noteTab;render();});
     const preview=el=>{const r=v.state.references[el.dataset.noteTab];app.querySelector("[data-note-preview]").innerHTML=`<strong>Pin ${r.pinId}</strong><p>${e(r.note||"No Note")}</p>`;};on("[data-note-tab]",preview,"mouseenter");on("[data-note-tab]",preview,"focus");
@@ -182,14 +196,14 @@
     on("[data-merge-tag]",async()=>{const {id,target}=v.tagEditor;if(!confirm(`Merge into ${v.state.tags[target].name}? The target is kept and assignments combined.`))return;const r=await act({type:"MERGE_TAG",tagId:id,targetTagId:target,bases:{[id]:v.state.tags[id].revision}});if(r.ok){v.tagEditor=null;render();}});
     on("[data-drag-tag]",(el,ev)=>ev.dataTransfer.setData("text/plain",el.dataset.dragTag),"dragstart");on("[data-drag-tag]",(_,ev)=>ev.preventDefault(),"dragover");
     on("[data-drag-tag]",(el,ev)=>{ev.preventDefault();const id=ev.dataTransfer.getData("text/plain");if(!v.state.tags[id]||id===el.dataset.dragTag)return;const order=v.state.tagOrder.filter(t=>t!==id);order.splice(order.indexOf(el.dataset.dragTag),0,id);act({type:"REORDER_TAGS",tagIds:order,baseOrder:v.state.tagOrder});},"drop");
-    on("[data-trash]",async()=>{if(!await notes.flush()){v.message="Resolve the Note draft before moving to Trash.";render();return;}const ids=[...v.selected];if(confirm(`Move ${ids.length} References to Trash? Pinterest is unaffected.`)){const r=await act(PinRefUI.lifecycleCommand(v.state,"TRASH",ids));if(r.ok){v.selected.clear();render();}}});
+    on("[data-trash]",async()=>{if(!await notes.flush()){v.message="A Note change could not be saved. Retry it, or cancel moving to Trash.";render();return;}const ids=[...v.selected];if(confirm(`Move ${ids.length} References to Trash? Pinterest is unaffected.`)){const r=await act(PinRefUI.lifecycleCommand(v.state,"TRASH",ids));if(r.ok){v.selected.clear();render();}}});
     on("[data-restore]",el=>act(PinRefUI.lifecycleCommand(v.state,"RESTORE",[el.dataset.restore])));const remove=ids=>{if(confirm(`Permanently delete ${ids.length} References? This cannot be undone. Pinterest is unaffected.`))act(PinRefUI.lifecycleCommand(v.state,"PERMANENT_DELETE",ids));};on("[data-delete]",el=>remove([el.dataset.delete]));on("[data-empty-trash]",()=>remove(Object.keys(v.state.trash)));
     on("[data-capture-retry]",el=>act({type:"COMMIT_CAPTURE",attemptId:el.dataset.captureRetry}));on("[data-dismiss-attempt]",el=>act({type:"DISMISS_ATTEMPT",attemptId:el.dataset.dismissAttempt}));
     on("[data-capture-check]",el=>evidence({type:"pinref:checkCapture",attemptId:el.dataset.captureCheck}));on("[data-preview]",el=>evidence({type:"pinref:refreshEvidence",pinId:el.dataset.preview,field:"preview"}));on("[data-check]",el=>evidence({type:"pinref:refreshEvidence",pinId:el.dataset.check,field:"link"}));
   }
   async function evidence(message){try{const r=await chrome.runtime.sendMessage(message);v.message=r.ok?"Evidence refreshed from the open Pinterest Pin":"Open this Pin in its original Pinterest tab and try again. Saved metadata is unchanged.";}catch{v.message="Could not refresh evidence. Saved metadata is unchanged.";}await load();}
   async function load() {
-    try{const result=await chrome.runtime.sendMessage({type:"pinref:getDashboardState"});if(!result?.ok)throw new Error();v.state={tags:{},tagOrder:[],trash:{},drafts:{},attempts:{},preferences:{theme:"dark",galleryMode:"waterfall",inspectorMode:"floating"},...result};v.selected=new Set([...v.selected].filter(id=>v.state.references[id]));if(mergeRequest.has("merge")){const id=mergeRequest.get("merge"),target=mergeRequest.get("target");if(v.state.tags[id]&&v.state.tags[target])v.tagEditor={id,name:v.state.tags[id].name,target};mergeRequest.delete("merge");}render();}
+    try{const result=await chrome.runtime.sendMessage({type:"pinref:getDashboardState"});if(!result?.ok)throw new Error();v.state={tags:{},tagOrder:[],trash:{},attempts:{},preferences:{theme:"dark",galleryMode:"waterfall",inspectorMode:"floating"},...result};v.selected=new Set([...v.selected].filter(id=>v.state.references[id]));if(mergeRequest.has("merge")){const id=mergeRequest.get("merge"),target=mergeRequest.get("target");if(v.state.tags[id]&&v.state.tags[target])v.tagEditor={id,name:v.state.tags[id].name,target};mergeRequest.delete("merge");}render();}
     catch{document.querySelector("#announcements").textContent="Could not load Library. Reload to retry.";}
   }
   document.addEventListener("keydown",ev=>{
@@ -200,8 +214,14 @@
   document.addEventListener("click",event=>{if(v.suggestions&&!event.target.closest(".search-box")){v.suggestions=false;render();}});
   window.addEventListener("beforeunload",event=>{if(notes.hasDirty()){notes.flush();event.preventDefault();event.returnValue="";}});
   window.addEventListener("pagehide",()=>{closing=true;dashboardPort?.disconnect();});
-  window.addEventListener("message",event=>{
-    if(!inspectorOnly||event.source!==window.parent||event.origin!==(location.protocol==="file:"?"null":location.origin)||event.data?.type!=="pinref:inspector-selection")return;
+  window.addEventListener("message",async event=>{
+    if(!inspectorOnly||event.source!==window.parent||event.origin!==(location.protocol==="file:"?"null":location.origin))return;
+    if(event.data?.type==="pinref:inspector-flush"){
+      await notes.flush();
+      event.source.postMessage({type:"pinref:inspector-flushed"},location.protocol==="file:"?"*":location.origin);
+      return;
+    }
+    if(event.data?.type!=="pinref:inspector-selection")return;
     const ids=Array.isArray(event.data.pinIds)?event.data.pinIds.filter(id=>v.state?.references?.[id]):[];
     v.selected=new Set(ids);v.activeNote=ids.includes(event.data.activePinId)?event.data.activePinId:ids[0]||null;render();
   });

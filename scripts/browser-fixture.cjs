@@ -16,7 +16,8 @@ function createBrowser() {
   const url = (file) => `chrome-extension://pinref/${file}`;
   const chrome = {
     runtime:{ getURL:url, onMessage:event(), onConnect:event() },
-    sidePanel:{ onClosed:event(), async setPanelBehavior(value){this.behavior=value;} },
+    action:{ onClicked:event() },
+    sidePanel:{ onClosed:event(), opened:[], async setPanelBehavior(value){this.behavior=value;}, async open(options){this.opened.push(options);} },
     tabs:{ onActivated:event(), onUpdated:event(), onRemoved:event(), async get(id){if(!tabs.has(id))throw new Error("closed");return tabs.get(id);}, async query(query){return [...tabs.values()].filter(tab=>(query.windowId === undefined || tab.windowId===query.windowId)&&(!query.active || tab.active));}, async sendMessage(id,message){if(message.type === "pinref:stopImportScan")stopped.push({id,...message});return {ok:true};} },
     windows:{ onFocusChanged:event(), async get(id){return windows.get(id);} },
     permissions:{ onRemoved:event(), async contains(){return true;} },

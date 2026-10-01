@@ -33,19 +33,15 @@
             if (!allowed[c.key]?.includes(c.value)) return fail("invalid-preference");
             state.preferences[c.key] = c.value; break;
           }
-          case "SAVE_DRAFT":
           case "SAVE_NOTE": {
+            // Last committed write wins (ADR-0014); lifecycle and generation still reject writes across Trash or Permanent Delete.
             if (!reference) return fail("reference-not-active");
             if (reference.lifecycleRevision !== c.lifecycleRevision || reference.generation !== c.generation) return fail("stale-reference");
-            if (!c.draftId || typeof c.text !== "string") return fail("invalid-draft");
-            state.drafts[c.draftId] = {draftId:c.draftId,ownerId:c.ownerId,pinId:c.pinId,text:c.text,baseRevision:c.baseRevision,lifecycleRevision:c.lifecycleRevision,generation:c.generation,updatedAt:now()};
-            if (c.type === "SAVE_DRAFT") break;
-            if (reference.noteRevision !== c.baseRevision) return {ok:false,reason:"note-conflict",latest:reference.note,revision:reference.noteRevision};
+            if (typeof c.text !== "string") return fail("invalid-note");
             reference.note = c.text.trim() ? c.text : "";
             reference.noteRevision += 1;
-            delete state.drafts[c.draftId]; return {ok:true,record:structuredClone(reference)};
+            return {ok:true, record:structuredClone(reference)};
           }
-          case "DISCARD_DRAFT": delete state.drafts[c.draftId]; break;
           case "CREATE_TAG": {
             const name = String(c.name || "").trim();
             if (!name || name.length > 80) return fail("invalid-tag-name");
@@ -107,7 +103,6 @@
           case "TRASH": {
             if (!validRecords()) return fail("reference-not-active");
             if(records.some(r=>c.bases?.[r.pinId]?.generation!==r.generation||c.bases?.[r.pinId]?.lifecycleRevision!==r.lifecycleRevision))return fail("stale-reference");
-            if (Object.values(state.drafts).some(d=>c.pinIds.includes(d.pinId))) return fail("drafts-pending");
             records.forEach(r=>{r.lifecycleRevision+=1; r.trashedAt=now();state.trash[r.pinId]=r;delete state.references[r.pinId];}); break;
           }
           case "RESTORE":
@@ -118,7 +113,6 @@
             for (const pinId of c.pinIds) {
               if (c.type === "RESTORE") {const r=state.trash[pinId];r.lifecycleRevision+=1;delete r.trashedAt;state.references[pinId]=r;}
               delete state.trash[pinId];
-              if(c.type==="PERMANENT_DELETE")for(const [key,draft] of Object.entries(state.drafts))if(draft.pinId===pinId)delete state.drafts[key];
               for (const [key,pin] of Object.entries(state.operations)) if(pin===pinId) delete state.operations[key];
             } break;
           }

@@ -170,6 +170,19 @@
     root.querySelectorAll("img").forEach((img)=>img.addEventListener("error",()=>{const fallback=document.createElement("span");fallback.className="preview-placeholder";fallback.textContent="Preview unavailable";img.replaceWith(fallback);},{once:true}));
   }
 
+  // Ask the embedded Dashboard Inspector to commit pending Note text before it is removed.
+  function flushInspectorFrame() {
+    const frame=root.querySelector(".dashboard-inspector-frame");
+    if(!frame?.contentWindow)return Promise.resolve();
+    return new Promise(resolve=>{
+      const done=()=>{window.removeEventListener("message",listener);clearTimeout(timer);resolve();};
+      const listener=event=>{if(event.source===frame.contentWindow&&event.data?.type==="pinref:inspector-flushed")done();};
+      const timer=setTimeout(done,1500);
+      window.addEventListener("message",listener);
+      frame.contentWindow.postMessage({type:"pinref:inspector-flush"},location.protocol==="file:"?"*":location.origin);
+    });
+  }
+
   async function refresh() {
     if (loading) { refreshAgain = true; return; }
     loading = true;
@@ -198,7 +211,9 @@
       view.captureJustStarted=false;
       if (view.sessionId && !current()) { view.sessionId=null; view.sourceDetailsOpen=true; }
       if (view.manualSessionId && !view.remote.sessions?.[view.manualSessionId]) view.manualSessionId=null;
-      view.mode=view.captureFocus ? "pin" : view.manualSessionId ? "import" : pageMode(result.source,result);
+      const nextMode=view.captureFocus ? "pin" : view.manualSessionId ? "import" : pageMode(result.source,result);
+      if(view.mode==="dashboard-inspector"&&nextMode!=="dashboard-inspector")await flushInspectorFrame();
+      view.mode=nextMode;
       const s = current();
       if (!view.busy && s && ["paused","ready-to-import"].includes(s.status)) {
         const reviewed = await send({type:"BEGIN_REVIEW",sessionId:s.sessionId});

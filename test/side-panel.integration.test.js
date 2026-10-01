@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {createBrowser}=require("../scripts/browser-fixture.cjs");
-test("Library commands share imported records, preserve conflicting drafts and reject edits after Trash",async()=>{
+test("Library commands share imported records, keep the last committed Note and reject edits after Trash",async()=>{
   const h=createBrowser();
   const {session}=await h.command({type:"START",tabId:41});
   await h.scan(session,"OBSERVE_BATCH",[{pinId:"123456789"}]);
@@ -16,26 +16,27 @@ test("Library commands share imported records, preserve conflicting drafts and r
   const tagged=await command({type:"CREATE_TAG",name:"Inspiration",pinIds:["123456789"],bases:{"123456789":{generation:reference.generation,lifecycleRevision:0}}});
   assert.equal(tagged.ok,true);
   const tagId=tagged.tagId;
-  assert.ok(tagId);
   const generation=(await h.state()).references["123456789"].generation;
-  assert.equal((await command({type:"SAVE_NOTE",pinId:"123456789",draftId:"editor-a",text:"First note",baseRevision:0,lifecycleRevision:0,generation})).ok,true);
-  const conflict=await command({type:"SAVE_NOTE",pinId:"123456789",draftId:"editor-b",text:"My draft",baseRevision:0,lifecycleRevision:0,generation});
-  assert.equal(conflict.reason,"note-conflict");
+  assert.equal((await command({type:"SAVE_NOTE",pinId:"123456789",text:"First note",lifecycleRevision:0,generation})).ok,true);
+  const later=await command({type:"SAVE_NOTE",pinId:"123456789",text:"Written elsewhere",lifecycleRevision:0,generation});
+  assert.equal(later.ok,true,"same-Note edits resolve as last committed write wins");
   const disk=h.getDisk().pinrefState;
-  assert.equal(disk.references["123456789"].note,"First note");
-  assert.equal(disk.drafts["editor-b"].text,"My draft");
+  assert.equal(disk.references["123456789"].note,"Written elsewhere");
+  assert.equal(disk.drafts,undefined,"Notes keep no stored drafts");
   assert.deepEqual(disk.references["123456789"].tags,[tagId]);
-  assert.equal((await command({type:"TRASH",pinIds:["123456789"]})).reason,"drafts-pending");
-  await command({type:"DISCARD_DRAFT",draftId:"editor-b"});
+  assert.equal((await command({type:"SAVE_DRAFT",pinId:"123456789",text:"x"})).reason,"unavailable-command");
   assert.equal((await command({type:"TRASH",pinIds:["123456789"]})).ok,true);
-  assert.equal((await command({type:"SAVE_NOTE",pinId:"123456789",draftId:"late",text:"Too late",baseRevision:1,lifecycleRevision:0})).reason,"reference-not-active");
+  assert.equal((await command({type:"SAVE_NOTE",pinId:"123456789",text:"Too late",lifecycleRevision:0,generation})).reason,"reference-not-active");
   await command({type:"RESTORE",pinIds:["123456789"]});
-  assert.equal(h.getDisk().pinrefState.references["123456789"].note,"First note");
+  assert.equal((await command({type:"SAVE_NOTE",pinId:"123456789",text:"Stale lifecycle",lifecycleRevision:0,generation})).reason,"stale-reference");
+  assert.equal(h.getDisk().pinrefState.references["123456789"].note,"Written elsewhere");
 });
 
-test("extension action opens the panel; active Saved Pins, individual Pin and outside pages are distinguished",async()=>{
+test("extension action opens the Docked Inspector outside Dashboard; active Saved Pins, individual Pin and outside pages are distinguished",async()=>{
   const h=createBrowser();
-  assert.equal(h.chrome.sidePanel.behavior.openPanelOnActionClick,true);
+  assert.equal(h.chrome.sidePanel.behavior.openPanelOnActionClick,false);
+  h.chrome.action.onClicked.emit(h.tabs.get(41));
+  assert.equal(JSON.stringify(h.chrome.sidePanel.opened),JSON.stringify([{windowId:7}]));
   assert.equal((await h.state()).source.kind,"saved-root");
   h.tabs.get(41).url="https://ca.pinterest.com/roahillust/_pins/";
   assert.equal((await h.state()).source.kind,"saved-root");
@@ -147,4 +148,30 @@ test("reopening the panel recovers confirmed writes whose result failed to persi
   const state=await h.state();
   assert.equal(state.sessions[session.sessionId].status,"results");
   assert.equal(Object.keys(state.references).length,1);
+});
+
+test("Inspector Placement: the action reopens a Floating Inspector on Dashboard, and an open Side Panel over Dashboard means Docked",async()=>{
+  const h=createBrowser();
+  const dashboardUrl=h.url("dashboard/index.html");
+  const library=command=>h.message({type:"pinref:libraryCommand",command},{url:dashboardUrl});
+  await library({type:"SET_PREFERENCE",key:"inspectorMode",value:"floating"});
+  h.port.disconnect();
+  const tab=h.tabs.get(41);
+  tab.url=dashboardUrl;
+  const received=[];
+  const listeners=[];
+  const dashboardPort={name:"pinref:dashboard",sender:{url:dashboardUrl,tab},
+    onMessage:{addListener(fn){listeners.push(fn);}},onDisconnect:{addListener(){}},
+    postMessage(value){received.push(value.type);},disconnect(){}};
+  h.chrome.runtime.onConnect.emit(dashboardPort);
+  await Promise.all(listeners.map(fn=>fn({windowId:7,tabId:41,pinIds:[],activePinId:null,placement:"floating"})));
+
+  h.chrome.action.onClicked.emit(tab);
+  assert.ok(received.includes("open-inspector"),"Floating placement reopens on the Dashboard page");
+  assert.equal(h.chrome.sidePanel.opened.length,0,"Floating placement never opens the Side Panel");
+
+  h.connectPanel();
+  await h.settle();
+  await new Promise(resolve=>setTimeout(resolve,20));
+  assert.equal((await h.state()).preferences.inspectorMode,"docked","opening the Side Panel over Dashboard docks the Inspector");
 });

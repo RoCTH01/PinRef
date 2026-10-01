@@ -24,7 +24,7 @@ test("independent field changes merge; stale same-Tag assignments cannot reverse
   assert.equal((await h.command(assign(a.tagId))).ok,true);
   assert.equal((await h.command(assign(b.tagId))).ok,true);
   assert.equal((await h.command({...assign(a.tagId),assigned:false})).reason,"stale-assignment");
-  assert.equal((await h.command({type:"SAVE_NOTE",pinId:r.pinId,draftId:"draft",text:"A note",baseRevision:0,lifecycleRevision:r.lifecycleRevision,generation:r.generation})).ok,true);
+  assert.equal((await h.command({type:"SAVE_NOTE",pinId:r.pinId,text:"A note",baseRevision:0,lifecycleRevision:r.lifecycleRevision,generation:r.generation})).ok,true);
   assert.equal((await h.state()).references[r.pinId].tags.length,2);
 });
 test("global Merge deduplicates assignments; Undo is atomic and cannot overwrite later changes",async()=>{
@@ -41,7 +41,7 @@ test("global Merge deduplicates assignments; Undo is atomic and cannot overwrite
   assert.equal((await h.command({type:"UNDO_TAG_CHANGE",receiptId:removed.receiptId})).reason,"undo-expired-or-stale");
   assert.equal((await h.state()).tags[b.tagId].name,"Atmosphere");
 });
-test("Permanent Delete allows a fresh Import but rejects a draft from the deleted generation",async()=>{
+test("Permanent Delete allows a fresh Import but rejects a Note write from the deleted generation",async()=>{
   const h=await library();const r=(await h.state()).references["123456789"];
   await h.command({type:"TRASH",pinIds:[r.pinId]});await h.command({type:"PERMANENT_DELETE",pinIds:[r.pinId]});
   // A subsequent Import uses the same real worker public lifecycle.
@@ -49,7 +49,7 @@ test("Permanent Delete allows a fresh Import but rejects a draft from the delete
   const {session}=await cmd({type:"START",tabId:41});await h.scan(session,"OBSERVE_BATCH",[{pinId:r.pinId}]);
   await cmd({type:"STOP_REVIEW",sessionId:session.sessionId});await cmd({type:"SELECT_ALL_NEW",sessionId:session.sessionId});await cmd({type:"IMPORT_SELECTED",sessionId:session.sessionId});
   assert.notEqual((await h.state()).references[r.pinId].generation,r.generation);
-  assert.equal((await h.command({type:"SAVE_NOTE",pinId:r.pinId,draftId:"stale",text:"Deleted Note",baseRevision:0,lifecycleRevision:0,generation:r.generation})).reason,"stale-reference");
+  assert.equal((await h.command({type:"SAVE_NOTE",pinId:r.pinId,text:"Deleted Note",baseRevision:0,lifecycleRevision:0,generation:r.generation})).reason,"stale-reference");
   assert.equal((await h.state()).references[r.pinId].note,"");
 });
 test("failed Library writes leave committed data authoritative and can be retried",async()=>{

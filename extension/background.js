@@ -92,6 +92,17 @@ async function interruptMatching(predicate, reason) {
   }
 }
 
+// A Floating Inspector never coexists with an open Side Panel: an open Side Panel over
+// the Dashboard tab means the Inspector is Docked (ADR-0013).
+async function dockOverDashboard(windowId) {
+  if (!panelOpenIn(windowId)) return;
+  const [tab] = await chrome.tabs.query({ active: true, windowId });
+  if (!isDashboardUrl(tab?.url)) return;
+  const state = await repository.readState();
+  if (state.preferences?.inspectorMode !== "floating") return;
+  await executeSerial({ type: "SET_PREFERENCE", key: "inspectorMode", value: "docked" }, library);
+}
+
 function notifyPanels() {
   for (const port of panelPorts.keys()) {
     try { port.postMessage({ type: "source-changed" }); } catch { /* onDisconnect removes the closed panel. */ }
@@ -183,7 +194,7 @@ async function handleMessage(message, sender) {
   }
   if (message?.type === "pinref:libraryCommand" && (fromDashboard || fromPanel)) {
     const command=message.command || {};
-    const allowed=["SET_PREFERENCE","SAVE_DRAFT","SAVE_NOTE","DISCARD_DRAFT","CREATE_TAG","ASSIGN_TAG","EDIT_TAG","REORDER_TAGS","DELETE_TAGS","MERGE_TAG","UNDO_TAG_CHANGE","TRASH","RESTORE","PERMANENT_DELETE","COMMIT_CAPTURE","DISMISS_ATTEMPT"];
+    const allowed=["SET_PREFERENCE","SAVE_NOTE","CREATE_TAG","ASSIGN_TAG","EDIT_TAG","REORDER_TAGS","DELETE_TAGS","MERGE_TAG","UNDO_TAG_CHANGE","TRASH","RESTORE","PERMANENT_DELETE","COMMIT_CAPTURE","DISMISS_ATTEMPT"];
     if (!allowed.includes(command.type) || (!fromDashboard && ["TRASH","RESTORE","PERMANENT_DELETE","DELETE_TAGS","MERGE_TAG","REORDER_TAGS","DISMISS_ATTEMPT"].includes(command.type)) || (!fromDashboard&&command.type==="CREATE_TAG"&&!command.pinIds?.length)) return {ok:false,reason:"unavailable-command"};
     return executeSerial(command,library);
   }
@@ -230,8 +241,9 @@ chrome.runtime.onConnect.addListener((port) => {
       if (!tab || tab.windowId!==message.windowId || !isDashboardUrl(tab.url)) return;
       const pinIds=[...new Set((Array.isArray(message.pinIds)?message.pinIds:[]).filter(id=>typeof id==="string"))];
       const activePinId=pinIds.includes(message.activePinId)?message.activePinId:pinIds[0]||null;
+      const placement=message.placement==="floating"?"floating":"docked";
       const previous=dashboardPorts.get(port);
-      dashboardPorts.set(port,{windowId:message.windowId,tabId:message.tabId,pinIds,activePinId});
+      dashboardPorts.set(port,{windowId:message.windowId,tabId:message.tabId,pinIds,activePinId,placement});
       if (!previous) port.postMessage({type:"panel-visibility",open:panelOpenIn(message.windowId)});
       if (!previous || previous.activePinId!==activePinId || previous.pinIds.join("|")!==pinIds.join("|")) notifyPanels();
     });
@@ -243,6 +255,7 @@ chrome.runtime.onConnect.addListener((port) => {
     if (Number.isInteger(message.windowId)) {
       panelPorts.set(port, message.windowId);
       notifyDashboards(message.windowId);
+      dockOverDashboard(message.windowId).catch(console.error);
       recoverPendingWrites().catch(console.error).finally(() => {
         if (panelPorts.has(port)) port.postMessage({ type: "ready" });
       });
@@ -256,7 +269,17 @@ chrome.runtime.onConnect.addListener((port) => {
   });
 });
 
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
+// The action opens the Inspector in its remembered placement (ADR-0013). Chrome only allows
+// sidePanel.open() synchronously within the click, so the Dashboard placement is read from its port.
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(console.error);
+chrome.action.onClicked.addListener((tab) => {
+  const dashboard = [...dashboardPorts].find(([, item]) => item.tabId === tab.id && item.windowId === tab.windowId);
+  if (dashboard?.[1].placement === "floating") {
+    dashboard[0].postMessage({ type: "open-inspector" });
+    return;
+  }
+  chrome.sidePanel.open({ windowId: tab.windowId }).catch(console.error);
+});
 chrome.sidePanel.onClosed.addListener(({ windowId }) => {
   for (const [port, owner] of panelPorts) {
     if (owner === windowId) { panelPorts.delete(port); port.disconnect(); }
@@ -269,6 +292,7 @@ chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
     interruptMatching((session) => session.originTabId === tabId && (change.status === "loading" || PinRefImportDomain.importSurfaceForUrl(tab.url)?.surfaceKey !== session.surfaceKey), "navigation").catch(console.error);
   }
   if (change.url || change.title) notifyPanels();
+  if (change.url && tab.active) dockOverDashboard(tab.windowId).catch(console.error);
   if(change.url)tabContexts.delete(tabId);
   if(change.status==="loading")executeSerial({type:"INTERRUPT_CAPTURES",tabId},library).catch(console.error);
   if(change.status==="complete")browser.hasPinterestPermission().then(allowed=>{if(allowed)return contextForTab(tab);}).catch(console.error);
@@ -276,6 +300,7 @@ chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
 chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
   interruptMatching((session) => session.originWindowId === windowId && session.originTabId !== tabId, "tab-switch").catch(console.error);
   notifyPanels();
+  dockOverDashboard(windowId).catch(console.error);
 });
 chrome.tabs.onRemoved.addListener((tabId) => {
   tabContexts.delete(tabId);

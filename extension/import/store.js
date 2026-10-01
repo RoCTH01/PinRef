@@ -49,7 +49,6 @@
       version: SCHEMA_VERSION,
       references, trash, tags,
       tagOrder: [...new Set([...(state.tagOrder || []), ...Object.keys(tags)])].filter(id=>tags[id]),
-      drafts: structuredClone(state.drafts || {}),
       attempts: structuredClone(state.attempts || {}),
       preferences: {theme:"dark", galleryMode:"waterfall", inspectorMode:"floating", ...state.preferences},
       libraryRevision: state.libraryRevision || 0,
