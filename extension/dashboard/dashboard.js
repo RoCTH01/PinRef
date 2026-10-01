@@ -262,7 +262,13 @@
     on("[data-close-tag-editor]",closeTagEditor);
     on("[data-tag-name]",el=>{v.tagEditor.name=el.value;clearTimeout(v.tagEditor.timer);v.tagEditor.timer=setTimeout(saveTagName,600);},"input");
     on("[data-tag-name]",()=>{if(!PinRefUI.isRendering())saveTagName();},"blur");on("[data-tag-name]",(_,ev)=>{if(ev.key==="Enter")saveTagName();},"keydown");
-    on("[data-tag-color]",el=>act({type:"EDIT_TAG",tagId:v.tagEditor.id,color:el.value,baseRevision:v.state.tags[v.tagEditor.id].revision}),"change");
+    // The editor's own colour change bumps the Tag revision, so it also advances the rename base it
+    // is holding. Optimistic concurrency guards against other surfaces, never against this editor.
+    on("[data-tag-color]",async el=>{
+      const edit=v.tagEditor,base=v.state.tags[edit.id].revision;
+      const result=await act({type:"EDIT_TAG",tagId:edit.id,color:el.value,baseRevision:base});
+      if(result.ok && v.tagEditor?.id===edit.id)v.tagEditor.baseRevision=base+1;
+    },"change");
     const reorder=offset=>{const order=[...v.state.tagOrder],index=order.indexOf(v.tagEditor.id),to=index+offset;if(to<0||to>=order.length)return;[order[index],order[to]]=[order[to],order[index]];act({type:"REORDER_TAGS",tagIds:order,baseOrder:v.state.tagOrder});};on("[data-tag-up]",()=>reorder(-1));on("[data-tag-down]",()=>reorder(1));
     on("[data-tag-select]",(el,ev)=>{const id=el.dataset.tagSelect;if(ev.shiftKey&&v.tagAnchor){const ids=tags().map(t=>t.tagId),a=ids.indexOf(v.tagAnchor),b=ids.indexOf(id);ids.slice(Math.min(a,b),Math.max(a,b)+1).forEach(t=>v.tagSelection.add(t));}else if(el.checked)v.tagSelection.add(id);else v.tagSelection.delete(id);v.tagAnchor=id;render();});
     on("[data-clear-tags]",()=>{v.tagSelection.clear();render();});on("[data-delete-tags]",()=>deleteTags([...v.tagSelection]));on("[data-delete-tag]",()=>deleteTags([v.tagEditor.id]));
