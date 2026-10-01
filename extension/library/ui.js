@@ -102,7 +102,7 @@
     function html(pinId) {
       const e = editor(pinId);
       const retry = e.failed ? `<button class="quiet-button" data-note-retry="${escape(pinId)}">Retry<span class="sr-only"> saving Note for Pin ${escape(pinId)}</span></button>` : "";
-      return `<section class="detail-section"><h3>Note <small>Pin ${escape(pinId)}</small></h3>`
+      return `<section class="detail-section"><h3>Note</h3>`
         + `<textarea class="note-editor" data-note="${escape(pinId)}" data-focus="note-${escape(pinId)}" aria-label="Note for Pin ${escape(pinId)}" placeholder="No Note">${escape(e.text)}</textarea>`
         + `<small role="status" data-note-status="${escape(pinId)}">${escape(e.status)}</small>${retry}</section>`;
     }

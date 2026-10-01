@@ -1,7 +1,7 @@
 # PinRef CRUD 產品決策
 
 狀態：產品與 UI UX 決策已確認  
-最後更新：2026-10-01  
+最後更新：2026-10-03  
 範圍：Pinterest 原生操作、PinRef Browser Side Panel、PinRef Dashboard、多個 Pinterest tabs，以及三者共用的 local-first Library。本文件只定義產品行為，不指定 production Extension 架構。
 
 ## 產品邊界
@@ -163,7 +163,7 @@ Import 結果的 View Library 開啟全部 All Pins，依實際加入 PinRef 的
 | 成功 | 分別回報 imported、duplicate 與 failed 數量。 |
 | 等待 | candidates 與 importing items 不計入 Library。 |
 | 失敗與復原 | failed items留在可續跑Import session；不進Needs Attention；支援Retry、Resume、Dismiss。Done在結果確認後清除session candidates與temporary Board context；Dismiss不回滾已成功References。 |
-| 時間 | addedToPinRefAt 使用實際 import 時間；拿不到 Pinterest 原始 save time 時不得偽造。 |
+| 時間 | addedToPinRefAt 使用實際 import 時間；拿不到 Pinterest 原始 save time 時不得偽造。lastUsedAt 在匯入時等於 addedToPinRefAt。 |
 | 權限與揭露 | 優先用`activeTab`；若不足才在Import時要求Pinterest-only optional host permission。首次Import顯示in-product disclosure；CWS、privacy policy與實際local data handling必須一致。 |
 | 分發 | 公開原始碼並以Chrome Web Store作一般使用者正式分發；sideload只供開發、測試與審核期間使用。 |
 | MVP | Product requirement，先通過既有Pinterest integration prototype的identity、tab binding、scan lifecycle與state-transition hard gates，再以CWS review作release gate。 |
@@ -272,6 +272,7 @@ No Note 是單一產品狀態。Never-written、cleared、empty 與 whitespace-o
 | Dashboard | 從 active Library 移入 Trash | 回到 Library | 從 Trash 移除 |
 | Tags／Note | 完整保留 | 原樣恢復 | 永久移除 |
 | addedToPinRefAt | 保留 | 保留，不視為新加入 | 移除 |
+| lastUsedAt | 保留 | 保留，不視為剛使用 | 移除 |
 | 等待 | Moving to Trash | Restoring | Deleting permanently |
 | 失敗 | 留在 Active | 留在 Trash | 未刪成功者留在 Trash並可 retry |
 | 復原 | Restore | 再次 Trash | 無法復原 |
@@ -372,7 +373,16 @@ Cross-device sync 是未來 opt-in 能力。Stable IDs、revisions、operation I
 - Floating 在 selection 清除後關閉；Docked 保留 empty placeholder。關閉 Inspector 不改 placement，下次以原 placement 開啟。
 - Single selection 由上而下顯示 preview、editable Name（placeholder 為 Pin ID）、Tags、editable Note、added time、Open original。
 - Multi-selection 顯示 stacked thumbnails、count、shared Tag intersection、Note rail。Note 永遠只編輯一筆 active Reference，不 batch overwrite。
-- Clear selection 是低強度 footer action，Note editor 取得彈性垂直空間。
+- Clear 是 titlebar 上「n selected」旁的低強度 action；Move to Trash 位於 footer，與 View on Pinterest 同列且同樣低調。Note editor 取得彈性垂直空間。
+
+### Reference Use 與 Recently used（ADR-0016）
+
+- Library 的時間分類是 Recently used，依 lastUsedAt 由新到舊排序；All Pins 仍依 addedToPinRefAt 排序。
+- 算作 use：指派或移除 Tag、儲存 Note、儲存 Name、在 Inspector 選取、在 Pinterest 成為 Context Pin。
+- 不算 use：Trash、Restore、Permanent Delete 等 lifecycle 操作。
+- lastUsedAt 只前進，不帶 field revision；同一筆 Reference 一分鐘內重複檢視不寫入。
+- Recently used 的排序在進入該分類時定住，切換分類或 Tag filter 才重新讀取，避免點選時 Gallery 在游標下重排。切換新舊方向只是反轉同一份順序。
+- 舊資料沒有 lastUsedAt 時沿用 addedToPinRefAt。
 
 ### Gallery、Sidebar 與 responsive behavior
 

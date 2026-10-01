@@ -11,7 +11,11 @@ const {createBrowser}=require("./browser-fixture.cjs");
   const pages=new Map();
   const notify=()=>{for(const page of pages.keys())if(!page.isClosed())page.evaluate(()=>window.fixtureNotify?.()).catch(()=>{});};
   try {
-    await context.route("https://i.pinimg.com/**",route=>route.fulfill({contentType:"image/svg+xml",body:'<svg xmlns="http://www.w3.org/2000/svg" width="400" height="500"><rect width="400" height="500" fill="#465955"/><circle cx="210" cy="180" r="110" fill="#c7aa78"/></svg>'}));
+    await context.route("https://i.pinimg.com/**",route=>{
+      const portrait=route.request().url().endsWith("/one.png");
+      const [width,height]=portrait?[400,1200]:[1200,400];
+      return route.fulfill({contentType:"image/svg+xml",body:`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="#465955"/><circle cx="${width/2}" cy="${height/2}" r="110" fill="#c7aa78"/></svg>`});
+    });
     await context.exposeBinding("fixtureMessage",async({page},message)=>{
       const surface=pages.get(page);
       const sender=surface==="pinterest"?{url:h.tabs.get(41).url,tab:h.tabs.get(41),documentId:"pinterest-doc",frameId:0}:{url:h.url(`${surface}/index.html`)};
@@ -35,6 +39,14 @@ const {createBrowser}=require("./browser-fixture.cjs");
     await panel.locator('[data-action="IMPORT_SELECTED"]').click();await panel.getByText("2 Pins added to Library",{exact:true}).waitFor();
     const dashboard=await open("dashboard");
     await dashboard.locator('[data-select="123456789"]').click();
+    const previewFits=async page=>page.locator(".selection-overview > .summary-art").evaluate(art=>{
+      const box=art.getBoundingClientRect(),image=art.querySelector("img"),bounds=image.getBoundingClientRect();
+      return image.complete&&image.naturalWidth>0&&getComputedStyle(image).objectFit==="contain"
+        &&Math.abs(box.width/box.height-4/3)<.01
+        &&bounds.left>=box.left-1&&bounds.top>=box.top-1&&bounds.right<=box.right+1&&bounds.bottom<=box.bottom+1;
+    });
+    await dashboard.locator(".selection-overview > .summary-art img").evaluate(img=>img.decode());
+    assert.ok(await previewFits(dashboard),"A tall preview fits inside the Inspector's unchanged 4:3 thumbnail area");
     await dashboard.getByRole("button",{name:"Add Tag",exact:true}).click();
     await dashboard.getByRole("textbox",{name:"Find or create Tag"}).fill("Inspiration");
     await dashboard.getByRole("button",{name:"Create “Inspiration” & assign"}).click();
@@ -86,6 +98,8 @@ const {createBrowser}=require("./browser-fixture.cjs");
     await dashboard.waitForFunction(()=>!document.querySelector(".inspector-panel"));
     await dashboard.locator('[data-select="987654321"]').click();
     await dashboard.locator(".inspector-panel.floating").waitFor();
+    await dashboard.locator(".selection-overview > .summary-art img").evaluate(img=>img.decode());
+    assert.ok(await previewFits(dashboard),"A wide preview fits inside the same thumbnail area");
     await dashboard.locator('[data-clear-selection]').click();
     await dashboard.waitForFunction(()=>!document.querySelector(".inspector-panel"));
     await dashboard.locator('[data-select="123456789"]').click();

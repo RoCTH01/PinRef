@@ -41,7 +41,9 @@
       return [id, { note:"", ...record, tags:[...new Set(assignments)], noteRevision:record.noteRevision || 0,
         generation:record.generation || `legacy:${id}:${record.addedToPinRefAt || ""}`,
         lifecycleRevision:record.lifecycleRevision || 0, assignmentRevisions:{...record.assignmentRevisions},
-        linkStatus:record.linkStatus || "unknown" }];
+        linkStatus:record.linkStatus || "unknown",
+        // Existing References have never recorded use; the moment they entered PinRef is the honest answer.
+        lastUsedAt:record.lastUsedAt || record.addedToPinRefAt || null }];
     }));
     const references = records(state.references);
     const trash = records(state.trash);
@@ -121,7 +123,8 @@
           lifecycleRevision: 0,
           assignmentRevisions: {},
           linkStatus: "unknown",
-          addedToPinRefAt: importedAt
+          addedToPinRefAt: importedAt,
+          lastUsedAt: importedAt
         };
         state.references[candidate.pinId] = record;
         state.libraryRevision += 1;

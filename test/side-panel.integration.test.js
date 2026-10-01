@@ -43,6 +43,7 @@ test("extension action opens the Docked Inspector outside Dashboard; active Save
   assert.equal(h.chrome.sidePanel.options.get(41)?.enabled,true);
   const outside={id:42,windowId:7,index:1,active:false,url:"https://example.com/"};h.tabs.set(42,outside);
   h.chrome.tabs.onUpdated.emit(42,{url:outside.url},outside);
+  await new Promise(resolve=>setTimeout(resolve,0));
   assert.equal(h.chrome.sidePanel.options.get(42)?.enabled,false);
   assert.equal(h.chrome.sidePanel.options.get(42)?.path,undefined,"keeps the one global panel instance");
   h.chrome.action.onClicked.emit(outside);
@@ -50,6 +51,7 @@ test("extension action opens the Docked Inspector outside Dashboard; active Save
   assert.equal(JSON.stringify(h.chrome.tabs.created),JSON.stringify([{url:h.url("dashboard/index.html"),windowId:7,index:2}]));
   const dashboardTab={id:43,windowId:7,index:2,active:false,url:h.url("dashboard/index.html")};h.tabs.set(43,dashboardTab);
   h.chrome.tabs.onUpdated.emit(43,{url:dashboardTab.url},dashboardTab);
+  await new Promise(resolve=>setTimeout(resolve,0));
   assert.equal(h.chrome.sidePanel.options.get(43)?.enabled,true);
   h.tabs.delete(42);h.tabs.delete(43);
   h.tabs.get(41).url="https://ca.pinterest.com/roahillust/_pins/";
@@ -188,4 +190,30 @@ test("Inspector Placement: the action reopens a Floating Inspector on Dashboard,
   await h.settle();
   await new Promise(resolve=>setTimeout(resolve,20));
   assert.equal((await h.state()).preferences.inspectorMode,"docked","opening the Side Panel over Dashboard docks the Inspector");
+});
+
+test("Side Panel availability is reconciled on tab activation and creation, and the global panel instance stays openable",async()=>{
+  const h=createBrowser();
+  const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
+  await settle();
+  // Disabling the global options would disable the one panel instance and leave sidePanel.open with nothing to open.
+  assert.equal(h.chrome.sidePanel.defaults,null,"availability is per tab, never a global disable");
+  // Switching tabs is the gesture that hides the Side Panel, so activation alone must reconcile it.
+  const outside={id:52,windowId:7,index:1,active:false,url:"https://example.com/"};
+  h.tabs.set(52,outside);
+  h.chrome.tabs.onActivated.emit({tabId:52,windowId:7});
+  await settle();
+  assert.equal(h.chrome.sidePanel.options.get(52)?.enabled,false);
+  const pinTab={id:53,windowId:7,index:2,active:false,url:"https://ca.pinterest.com/pin/123456789/"};
+  h.tabs.set(53,pinTab);
+  h.chrome.tabs.onCreated.emit(pinTab);
+  await settle();
+  assert.equal(h.chrome.sidePanel.options.get(53)?.enabled,true);
+  assert.equal(h.chrome.sidePanel.options.get(53)?.path,undefined,"keeps the one global panel instance");
+  h.chrome.tabs.onActivated.emit({tabId:53,windowId:7});
+  await settle();
+  assert.equal(h.chrome.sidePanel.options.get(53)?.enabled,true);
+  h.chrome.action.onClicked.emit(h.tabs.get(53));
+  assert.equal(JSON.stringify(h.chrome.sidePanel.opened),JSON.stringify([{windowId:7}]),"the action still opens the Side Panel on Pinterest");
+  h.tabs.delete(52);h.tabs.delete(53);
 });

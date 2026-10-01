@@ -15,7 +15,10 @@ const { pathToFileURL } = require("node:url");
     await page.goto("about:blank");
     // Install fixture after the production modules in one ordered init script.
     await page.addInitScript({content:modules+"\n("+fixture.toString()+")();"});
-    await page.route("https://i.pinimg.com/**",route=>route.fulfill({contentType:"image/svg+xml",body:'<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#b9c8b5"/><path d="M0 300L200 70L400 300" fill="#667e74"/></svg>'}));
+    await page.route("https://i.pinimg.com/**",route=>{
+      const height=route.request().url().endsWith("/portrait.png")?1200:300;
+      return route.fulfill({contentType:"image/svg+xml",body:`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="${height}"><rect width="400" height="${height}" fill="#b9c8b5"/><path d="M0 ${height}L200 70L400 ${height}" fill="#667e74"/></svg>`});
+    });
     const url=pathToFileURL(path.resolve(__dirname,"../extension/sidepanel/index.html")).href;
     await page.goto(url);
     await page.locator('[data-pin="123456"]').waitFor();
@@ -122,6 +125,12 @@ const { pathToFileURL } = require("node:url");
     assert.equal(await page.getByRole("heading",{name:"Note",exact:false}).count(),1);
     // This Pin shares the Dashboard Inspector's structure: overview thumbnail, Tag chips, Tag picker and Global Tag editor.
     assert.equal(await page.locator(".selection-overview .summary-art").count(),1);
+    await page.locator(".selection-overview .summary-art img").evaluate(img=>img.decode());
+    assert.ok(await page.locator(".selection-overview .summary-art").evaluate(art=>{
+      const box=art.getBoundingClientRect(),img=art.querySelector("img"),image=img.getBoundingClientRect();
+      return Math.abs(box.width/box.height-4/3)<.01&&getComputedStyle(img).objectFit==="contain"
+        &&image.left>=box.left-1&&image.top>=box.top-1&&image.right<=box.right+1&&image.bottom<=box.bottom+1;
+    }),"This Pin's tall preview fits inside the unchanged thumbnail area");
     const stacked=await page.evaluate(()=>{const art=document.querySelector(".selection-overview .summary-art").getBoundingClientRect(),field=document.querySelector(".reference-name").getBoundingClientRect();return field.top>=art.bottom;});
     assert.ok(stacked,"The Name sits below the thumbnail");
     for(const removed of ["Pinterest link","Reload preview","Check Pinterest status"])assert.equal(await page.getByText(removed,{exact:true}).count(),0,`${removed} is not shown`);
@@ -172,7 +181,7 @@ function fixture() {
   Object.assign(session,{status:"reviewing",hasReviewed:true,sourceTitle:"(79) Pinterest",originWindowId:7});
   for(let i=0;i<8;i++)session.candidates[String(123456+i)]={pinId:String(123456+i),previewUrl:"https://i.pinimg.com/fixture.png",eligibility:i===6?"duplicate":i===7?"in-trash":"new"};
   session.results.duplicate=1;session.results.inTrash=1;
-  let disk={pinrefState:{references:{"123462":{pinId:"123462",previewUrl:"https://i.pinimg.com/fixture.png",tags:[],note:"",noteRevision:0,lifecycleRevision:0,generation:1,linkStatus:"saved",addedToPinRefAt:"2026-09-30T00:00:00Z"}},trash:{"123463":{pinId:"123463"}},importSessions:{demo:session},operations:{}}};
+  let disk={pinrefState:{references:{"123462":{pinId:"123462",previewUrl:"https://i.pinimg.com/portrait.png",tags:[],note:"",noteRevision:0,lifecycleRevision:0,generation:1,linkStatus:"saved",addedToPinRefAt:"2026-09-30T00:00:00Z"}},trash:{"123463":{pinId:"123463"}},importSessions:{demo:session},operations:{}}};
   let source={tabId:41,windowId:7,title:"(79) Pinterest",url:surface.surfaceUrl,kind:"saved-root",surface};
   let notify=()=>{};
   let granted=true;
@@ -188,7 +197,7 @@ function fixture() {
   const application=PinRefImportApplication.createImportApplication({repository,browser:{getTab:async()=>({id:source.tabId,windowId:7,url:source.url,title:source.title}),isActiveSurface:async(id,key)=>id===source.tabId&&key===source.surface?.surfaceKey,ensureScanner:async()=>!permissionRequired||granted,hasPinterestPermission:async()=>granted,startScanner:async()=>({ok:true}),stopScanner:async()=>{}}});
   window.chrome={windows:{getCurrent:async()=>({id:7})},runtime:{
     connect:()=>({onMessage:{addListener(fn){notify=fn;}},onDisconnect:{addListener(){}},postMessage(){setTimeout(()=>notify({type:"ready"}),0);},disconnect(){}}),
-    sendMessage:async(message)=>{await new Promise(resolve=>setTimeout(resolve,20));if(message.type==="pinref:getPanelState")return {...await repository.readState(),ok:true,source:structuredClone(source),context:source.kind==="pin"?{pinId:"123462",status:"saved",previewUrl:"https://i.pinimg.com/fixture.png"}:null,sessions:structuredClone(disk.pinrefState.importSessions),permissionGranted:granted};if(message.type==="pinref:libraryCommand")return library.execute(message.command);return application.execute(message.command);}
+    sendMessage:async(message)=>{await new Promise(resolve=>setTimeout(resolve,20));if(message.type==="pinref:getPanelState")return {...await repository.readState(),ok:true,source:structuredClone(source),context:source.kind==="pin"?{pinId:"123462",status:"saved",previewUrl:"https://i.pinimg.com/portrait.png"}:null,sessions:structuredClone(disk.pinrefState.importSessions),permissionGranted:granted};if(message.type==="pinref:libraryCommand")return library.execute(message.command);return application.execute(message.command);}
   },storage:{onChanged:{addListener(){}}},permissions:{request:async()=>{granted=allowRequest;return granted;},remove:async()=>{granted=false;return true;}}};
   window.fixtureSource=(kind)=>{
     const url={outside:"https://example.com/",home:"https://www.pinterest.com/",pin:"https://www.pinterest.com/pin/123462/",unsupported:"https://www.pinterest.com/search/pins/?q=art","board-b":"https://www.pinterest.com/example/board-b/"}[kind];

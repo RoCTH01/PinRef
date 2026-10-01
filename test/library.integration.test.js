@@ -88,3 +88,41 @@ test("a Reference Name is optional, trimmed, bounded and rejected across Trash",
   assert.equal((await h.command({type:"TRASH",pinIds:[r.pinId]})).ok,true);
   assert.equal((await h.command(name("After Trash"))).reason,"reference-not-active");
 });
+
+test("use is recorded by editing and by viewing, survives Trash and Restore, and coalesces repeat views",async()=>{
+  const h=await library();
+  const read=async id=>(await h.state()).references[id];
+  const imported=await read("123456789");
+  assert.equal(imported.lastUsedAt,imported.addedToPinRefAt,"an imported Reference starts as used when it arrived");
+
+  // Viewing is a use, recorded without any revision to conflict over.
+  h.advanceTime(61000);
+  const viewed=await h.command({type:"TOUCH_REFERENCES",pinIds:["123456789"]});
+  assert.equal(viewed.ok,true);
+  const afterView=await read("123456789");
+  assert.ok(afterView.lastUsedAt>imported.lastUsedAt,"viewing moves use forward");
+
+  // A second view in the same window must not write again, so panel refreshes cannot storm storage.
+  const before=(await h.state()).libraryRevision;
+  assert.equal((await h.command({type:"TOUCH_REFERENCES",pinIds:["123456789"]})).ok,true);
+  assert.equal((await h.state()).libraryRevision,before,"a repeat view inside the coalescing window writes nothing");
+  assert.equal((await read("123456789")).lastUsedAt,afterView.lastUsedAt);
+
+  // An unknown id is ignored rather than failing: a view is incidental to the user's real action.
+  assert.equal((await h.command({type:"TOUCH_REFERENCES",pinIds:["000000000"]})).ok,true);
+
+  // Editing is a use too.
+  const other=await read("987654321");
+  h.advanceTime(61000);
+  const saved=await h.command({type:"SAVE_NOTE",pinId:"987654321",text:"Used by editing",
+    lifecycleRevision:other.lifecycleRevision,generation:other.generation});
+  assert.equal(saved.ok,true);
+  assert.ok((await read("987654321")).lastUsedAt>other.lastUsedAt,"saving a Note records use");
+
+  // Trash and Restore are lifecycle operations, not use; the recorded time survives unchanged.
+  const used=(await read("987654321")).lastUsedAt;
+  await h.command({type:"TRASH",pinIds:["987654321"]});
+  assert.equal((await h.state()).trash["987654321"].lastUsedAt,used);
+  await h.command({type:"RESTORE",pinIds:["987654321"]});
+  assert.equal((await read("987654321")).lastUsedAt,used,"Restore does not count as using a Reference");
+});

@@ -18,8 +18,11 @@ const isPinterestUrl = value => {
     return false;
   }
 };
-// The Side Panel exists only on Pinterest and the Dashboard (ADR-0012). Omitting `path` keeps
-// the one global panel instance, which Chrome hides on disabled tabs and restores on return.
+// The Side Panel exists only on Pinterest and the Dashboard (ADR-0012). Availability is per tab, and
+// tab creation, activation and navigation each reconcile it, so leaving Pinterest hides the panel even
+// when the event that wakes a suspended service worker is the tab switch itself. Omitting `path` keeps
+// the one global panel instance, which Chrome hides on disabled tabs and restores on return; a global
+// `enabled:false` would disable that instance and leave `sidePanel.open` with nothing to open.
 const panelAllowedFor = url => isPinterestUrl(url) || isDashboardUrl(url);
 function syncPanelAvailability(tab) {
   if (!Number.isInteger(tab?.id)) return Promise.resolve();
@@ -133,6 +136,11 @@ async function panelState(windowId, attempt=0) {
   ]);
   const tab = tabs[0];
   const context=tab ? await contextForTab(tab) : null;
+  // Seeing a Reference as the Context Pin on Pinterest counts as use. The command coalesces repeats,
+  // so routine panel refreshes on one Pin record use once rather than on every refresh.
+  if (context?.pinId && state.references[context.pinId]) {
+    executeSerial({type:"TOUCH_REFERENCES", pinIds:[context.pinId]}, library).catch(console.error);
+  }
   const [activeNow]=await chrome.tabs.query({active:true,windowId});
   if(activeNow?.id!==tab?.id||activeNow?.url!==tab?.url){
     if(attempt<2)return panelState(windowId,attempt+1);
@@ -205,7 +213,7 @@ async function handleMessage(message, sender) {
   }
   if (message?.type === "pinref:libraryCommand" && (fromDashboard || fromPanel)) {
     const command=message.command || {};
-    const allowed=["SET_PREFERENCE","SAVE_NOTE","SAVE_NAME","CREATE_TAG","ASSIGN_TAG","EDIT_TAG","REORDER_TAGS","DELETE_TAGS","MERGE_TAG","UNDO_TAG_CHANGE","TRASH","RESTORE","PERMANENT_DELETE","COMMIT_CAPTURE","DISMISS_ATTEMPT"];
+    const allowed=["SET_PREFERENCE","SAVE_NOTE","SAVE_NAME","CREATE_TAG","ASSIGN_TAG","EDIT_TAG","REORDER_TAGS","DELETE_TAGS","MERGE_TAG","UNDO_TAG_CHANGE","TRASH","RESTORE","PERMANENT_DELETE","COMMIT_CAPTURE","DISMISS_ATTEMPT","TOUCH_REFERENCES"];
     if (!allowed.includes(command.type) || (!fromDashboard && ["TRASH","RESTORE","PERMANENT_DELETE","DELETE_TAGS","MERGE_TAG","REORDER_TAGS","DISMISS_ATTEMPT"].includes(command.type)) || (!fromDashboard&&command.type==="CREATE_TAG"&&!command.pinIds?.length)) return {ok:false,reason:"unavailable-command"};
     return executeSerial(command,library);
   }
@@ -315,7 +323,13 @@ chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
   if(change.status==="loading")executeSerial({type:"INTERRUPT_CAPTURES",tabId},library).catch(console.error);
   if(change.status==="complete")browser.hasPinterestPermission().then(allowed=>{if(allowed)return contextForTab(tab);}).catch(console.error);
 });
+chrome.tabs.onCreated.addListener((tab) => {
+  syncPanelAvailability(tab).catch(console.error);
+});
 chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
+  // Switching tabs is how the Side Panel leaves Pinterest, so activation reconciles availability
+  // rather than trusting whatever a navigation event set while the worker was alive.
+  browser.getTab(tabId).then((tab) => tab && syncPanelAvailability(tab)).catch(console.error);
   interruptMatching((session) => session.originWindowId === windowId && session.originTabId !== tabId, "tab-switch").catch(console.error);
   notifyPanels();
   dockOverDashboard(windowId).catch(console.error);

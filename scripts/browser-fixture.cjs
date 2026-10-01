@@ -17,8 +17,8 @@ function createBrowser() {
   const chrome = {
     runtime:{ getURL:url, onMessage:event(), onConnect:event() },
     action:{ onClicked:event() },
-    sidePanel:{ onClosed:event(), opened:[], options:new Map(), async setPanelBehavior(value){this.behavior=value;}, async setOptions(options){this.options.set(options.tabId,options);}, async open(options){this.opened.push(options);} },
-    tabs:{ onActivated:event(), onUpdated:event(), onRemoved:event(), async get(id){if(!tabs.has(id))throw new Error("closed");return tabs.get(id);}, async query(query){return [...tabs.values()].filter(tab=>(query.windowId === undefined || tab.windowId===query.windowId)&&(!query.active || tab.active));}, created:[], async create(options){this.created.push(options);return {id:999,...options};}, async sendMessage(id,message){if(message.type === "pinref:stopImportScan")stopped.push({id,...message});return {ok:true};} },
+    sidePanel:{ onClosed:event(), opened:[], options:new Map(), defaults:null, async setPanelBehavior(value){this.behavior=value;}, async setOptions(options){if(options.tabId===undefined)this.defaults=options;else this.options.set(options.tabId,options);}, async open(options){this.opened.push(options);} },
+    tabs:{ onActivated:event(), onCreated:event(), onUpdated:event(), onRemoved:event(), async get(id){if(!tabs.has(id))throw new Error("closed");return tabs.get(id);}, async query(query){return [...tabs.values()].filter(tab=>(query.windowId === undefined || tab.windowId===query.windowId)&&(!query.active || tab.active));}, created:[], async create(options){this.created.push(options);return {id:999,...options};}, async sendMessage(id,message){if(message.type === "pinref:stopImportScan")stopped.push({id,...message});return {ok:true};} },
     windows:{ onFocusChanged:event(), async get(id){return windows.get(id);} },
     permissions:{ onRemoved:event(), async contains(){return true;} },
     scripting:{ async executeScript(){} },
@@ -27,7 +27,13 @@ function createBrowser() {
       disk=structuredClone(value);
     }}}
   };
-  const context=vm.createContext({chrome,console,URL,structuredClone,crypto:webcrypto});
+  // The worker reads the wall clock directly, so tests that depend on elapsed time move the clock here.
+  let clockOffset=0;
+  class ShiftedDate extends Date {
+    constructor(...args){ args.length ? super(...args) : super(Date.now()+clockOffset); }
+    static now(){ return Date.now()+clockOffset; }
+  }
+  const context=vm.createContext({chrome,console,URL,structuredClone,crypto:webcrypto,Date:ShiftedDate});
   context.importScripts=(...files)=>files.forEach(file=>vm.runInContext(fs.readFileSync(path.resolve(__dirname,"../extension",file),"utf8"),context));
   vm.runInContext(fs.readFileSync(path.resolve(__dirname,"../extension/background.js"),"utf8"),context);
   const sender={url:url("sidepanel/index.html")};
@@ -43,7 +49,7 @@ function createBrowser() {
   const state=()=>message({type:"pinref:getPanelState",windowId:7});
   const scan=(session,eventType,observations=[])=>message({type:"pinref:scanEvent",sessionId:session.sessionId,surfaceKey:session.surfaceKey,eventType,observations},{tab:tabs.get(41)});
   const settle=()=>new Promise(resolve=>setImmediate(resolve));
-  return {chrome,tabs,windows,port,command,state,scan,settle,stopped,message,url,connectPanel,failResultOnce:()=>{failResult=true;},getDisk:()=>structuredClone(disk)};
+  return {chrome,tabs,windows,port,command,state,scan,settle,stopped,message,url,connectPanel,advanceTime:ms=>{clockOffset+=ms;},failResultOnce:()=>{failResult=true;},getDisk:()=>structuredClone(disk)};
 }
 
 module.exports={createBrowser};

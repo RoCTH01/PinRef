@@ -1,6 +1,6 @@
 # Integrate the PinRef prototypes into one production Side Panel and Dashboard
 
-> Revised on 2026-10-01: Inspector placement and Dashboard hosting follow ADR-0013, and Notes follow ADR-0014. Where this spec mentions a Side Panel, read the Docked Inspector on Pinterest; Local Draft, Updated elsewhere and Note conflict stories are superseded; the Dashboard has no in-page Docked layout. The Side Panel exists only on Pinterest and the Dashboard; the idle guide applies to unsupported Pinterest pages, and the action elsewhere opens the Dashboard (ADR-0012). Preview Reload and Pinterest status checks are removed (ADR-0015); References gain an optional Reference Name.
+> Revised on 2026-10-01: Inspector placement and Dashboard hosting follow ADR-0013, and Notes follow ADR-0014. Where this spec mentions a Side Panel, read the Docked Inspector on Pinterest; Local Draft, Updated elsewhere and Note conflict stories are superseded; the Dashboard has no in-page Docked layout. The Side Panel exists only on Pinterest and the Dashboard; the idle guide applies to unsupported Pinterest pages, and the action elsewhere opens the Dashboard (ADR-0012). Preview Reload and Pinterest status checks are removed (ADR-0015); References gain an optional Reference Name. The Library's time-based view is Recently used, ordered by Reference Use (ADR-0016).
 
 ## Problem Statement
 
@@ -42,7 +42,7 @@ This is the complete integration target rather than a limited visual milestone. 
 22. As a Pinterest user, I want View Library after a successful Import, so that I can inspect the References I just added when I choose.
 23. As a Library user, I want committed References shown as an image-only Contact Sheet, so that I can browse visually without repeated captions.
 24. As a Library user, I want sorting placed in the prototype's Gallery toolbar, so that I can find recently imported References quickly.
-25. As a Library user, I want sorting by actual PinRef import time, so that Recently added reflects local commits rather than an invented Pinterest save time.
+25. As a Library user, I want All Pins sorted by actual PinRef import time, so that it reflects local commits rather than an invented Pinterest save time, and Recently used sorted by Reference Use (ADR-0016).
 26. As a Library user, I want to select one or multiple References in the Gallery, so that I can inspect the current selection in one consistent place.
 27. As a Library user, I want a Floating or Docked Inspector whose placement survives changing the selected Reference, so that I can keep my preferred workspace arrangement.
 28. As a Library user, I want the Inspector to show the committed fields PinRef actually knows, including preview, identity, Tags, Note, added time, status, and original link, so that I can inspect and edit a Reference without inferred Board metadata.

@@ -36,6 +36,14 @@ _Avoid_: Current reference, hovered Pin, globally active Pin
 An optional, user-editable label for a Reference. When it is empty, PinRef shows the Pin ID ("Pin 123…") instead. It is PinRef metadata and never changes the Pin's title on Pinterest.
 _Avoid_: Title, Pin title, caption
 
+**Reference Use**:
+Working with a Reference, recorded as the time it last happened. Editing it counts (assigning or removing a Tag, saving a Note, saving a Name) and so does viewing it (selecting it in the Inspector, or seeing it as the Context Pin on Pinterest). Trash, Restore and Permanent Delete are lifecycle operations and never count. Use is a timestamp with no revision, because it only moves forward and repeat views within a minute record nothing.
+_Avoid_: Last opened, accessed, touched, viewed count
+
+**Recently used**:
+The Library view ordered by Reference Use, newest first. Its order is fixed when the view is entered and re-reads use when the destination or Tag filter changes, so using a Reference never reorders the Gallery under the pointer.
+_Avoid_: Recently added, recents, history
+
 **Pinterest Link Status**:
 The observed Pinterest Save state of a Context Pin (Saved, Not saved, Unavailable, Unknown), used only to explain the next step when the Pin is Not in PinRef. PinRef does not show or refresh it for References (ADR-0015), and it never changes PinRef membership.
 _Avoid_: Sync status, Reference status, saved state

@@ -56,7 +56,49 @@ const { pathToFileURL } = require("node:url");
     const reopened=await geometry();
     assert.ok(Object.keys(before.top).every(id=>Math.abs(before.top[id]-reopened.top[id])<5),"Pins should keep their vertical positions when sidebar reopens");
     await layoutPage.screenshot({path:"/tmp/pinref-dashboard-waterfall.png"});
+
+    // Recently used orders by use, and pins that order on arrival so selecting a Reference cannot
+    // reorder the Gallery under the pointer.
+    const usePage=await browser.newPage({viewport:{width:1440,height:1000}});
+    usePage.on("pageerror",error=>errors.push(error.message));
+    await usePage.addInitScript(()=>{
+      const at=minute=>new Date(Date.UTC(2026,8,30,0,minute)).toISOString();
+      // Added oldest-to-newest, but used in the opposite order, so the two sorts cannot agree.
+      const references={
+        "100001":{pinId:"100001",previewUrl:null,tags:[],note:"",addedToPinRefAt:at(1),lastUsedAt:at(30)},
+        "100002":{pinId:"100002",previewUrl:null,tags:[],note:"",addedToPinRefAt:at(2),lastUsedAt:at(20)},
+        "100003":{pinId:"100003",previewUrl:null,tags:[],note:"",addedToPinRefAt:at(3),lastUsedAt:at(10)}
+      };
+      window.pinrefCommands=[];
+      window.chrome={runtime:{sendMessage:async message=>{
+        if(message.type==="pinref:libraryCommand"){
+          window.pinrefCommands.push(message.command);
+          // The worker really does move use forward, so an unpinned sort would reorder the Gallery here.
+          if(message.command.type==="TOUCH_REFERENCES")message.command.pinIds.forEach(id=>{references[id].lastUsedAt=at(59);});
+          return {ok:true};
+        }
+        return {ok:true,references,preferences:{theme:"dark",galleryMode:"masonry",inspectorMode:"floating"}};
+      }},storage:{onChanged:{addListener(){}}},windows:{getCurrent:async()=>({id:7})}};
+    });
+    await usePage.goto(pathToFileURL(path.resolve(__dirname,"../extension/dashboard/index.html")).href);
+    await usePage.locator(".ref-card").first().waitFor();
+    const order=()=>usePage.$$eval(".ref-card",cards=>cards.map(card=>card.dataset.card));
+    assert.deepEqual(await order(),["100003","100002","100001"],"All Pins sorts by when a Reference was added");
+    await usePage.locator('.sidebar-item[data-destination="recent"]').click();
+    await usePage.waitForFunction(()=>document.querySelector(".gallery-context strong")?.textContent==="Recently used");
+    assert.deepEqual(await order(),["100001","100002","100003"],"Recently used sorts by when a Reference was last used");
+    await usePage.locator('[data-select="100003"]').click();
+    await usePage.locator(".inspector-panel").waitFor();
+    await usePage.waitForFunction(()=>window.pinrefCommands.some(c=>c.type==="TOUCH_REFERENCES"));
+    assert.deepEqual(await usePage.evaluate(()=>window.pinrefCommands.find(c=>c.type==="TOUCH_REFERENCES").pinIds),["100003"],"selecting a Reference records use");
+    assert.deepEqual(await order(),["100001","100002","100003"],"the order stays pinned while Recently used is open");
+    await usePage.locator('.sidebar-item[data-destination="library"]').click();
+    await usePage.waitForFunction(()=>document.querySelector(".gallery-context strong")?.textContent==="All Pins");
+    await usePage.locator('.sidebar-item[data-destination="recent"]').click();
+    await usePage.waitForFunction(()=>document.querySelector(".gallery-context strong")?.textContent==="Recently used");
+    assert.deepEqual(await order(),["100003","100001","100002"],"leaving and returning re-reads use from the Library, so the touched Reference moves to the front");
+
     assert.deepEqual(errors,[]);
-    console.log("PASS: Dashboard guidance, mobile drawer/focus, Waterfall position continuity, no Import execution");
+    console.log("PASS: Dashboard guidance, mobile drawer/focus, Waterfall position continuity, Recently used order, no Import execution");
   } finally { await browser.close(); }
 })().catch(error=>{console.error(error);process.exitCode=1;});

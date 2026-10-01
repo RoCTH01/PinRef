@@ -212,8 +212,11 @@
     .inspector-summary { display:grid; grid-template-columns:72px minmax(0,1fr); gap:12px; align-items:center; }
     .inspector-summary .summary-art { width:72px; height:72px; border-radius:10px; }
     .inspector-summary h2 { margin:4px 0 7px; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .inspector-actions { display:flex; justify-content:flex-end; align-items:center; min-height:28px; margin-top:5px; padding-top:4px; border-top:1px solid var(--line); }
-    .inspector-clear { min-height:23px; padding:2px 6px; border:0; border-radius:6px; background:transparent; color:var(--muted); font-size:9px; }
+    .inspector-footer { display:flex; align-items:center; gap:8px; margin-top:6px; padding-top:7px; border-top:1px solid var(--line); }
+    .inspector-footer .open-source-button { margin-right:auto; }
+    .inspector-trash { min-height:30px; padding:5px 8px; border:0; border-radius:8px; background:transparent; color:var(--muted); font-size:11px; }
+    .inspector-trash:hover { background:color-mix(in srgb,var(--danger) 14%,transparent); color:var(--danger); }
+    .inspector-clear { min-height:20px; padding:1px 6px; border:0; border-radius:6px; background:var(--soft); color:var(--muted); font-size:9px; }
     .inspector-clear:hover { background:var(--panel-3); color:var(--text); }
     .inspector-empty { min-height:calc(100vh - 52px); display:grid; place-content:center; justify-items:center; padding:28px; text-align:center; }
     .inspector-panel.docked .inspector-empty { min-height:calc(100vh - 76px); }
@@ -227,7 +230,7 @@
     .stacked-thumbnails .stack-art:nth-child(3) { left:28px; transform:rotate(6deg); }
     .selection-overview { display:flex; flex-direction:column; align-items:stretch; gap:10px; }
     .selection-overview > .summary-art { width:100%; aspect-ratio:4/3; max-height:260px; border-radius:12px; }
-    .selection-overview > .summary-art img { object-fit:contain; }
+    .selection-overview > .summary-art img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
     .selection-overview-copy { min-width:0; }
     .selection-overview-copy h2 { margin:0 0 3px; font-size:16px; }
     .selection-overview-copy p { margin:0; color:var(--muted); font-size:11px; }

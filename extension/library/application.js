@@ -5,6 +5,9 @@
 })(globalThis, function () {
   "use strict";
   const normalizedName = value => String(value || "").normalize("NFKC").trim().toLowerCase();
+  // Repeat views of the same Reference inside this window record no new use, so passive viewing
+  // cannot turn routine panel refreshes into a stream of writes.
+  const USE_COALESCING_MS = 60000;
   const fail = reason => ({ok:false, reason, persist:false});
   const safePreview = value => {
     try { const url = new URL(value); return url.protocol === "https:" && url.hostname === "i.pinimg.com" ? url.href : null; }
@@ -18,6 +21,8 @@
         const tag = state.tags[c.tagId];
         const validRecords = () => records.length && records.every(Boolean);
         const collision = name => Object.values(state.tags).find(t => t.tagId !== c.tagId && normalizedName(t.name) === normalizedName(name));
+        // Use is a timestamp, never a revision: it only moves forward, so concurrent writers cannot disagree.
+        const markUsed = record => { record.lastUsedAt = now(); };
         const assignments = (record, tagId, assigned) => {
           record.tags = assigned ? [...new Set([...record.tags, tagId])] : record.tags.filter(t => t !== tagId);
           record.assignmentRevisions[tagId] = (record.assignmentRevisions[tagId] || 0) + 1;
@@ -40,6 +45,7 @@
             if (typeof c.text !== "string") return fail("invalid-note");
             reference.note = c.text.trim() ? c.text : "";
             reference.noteRevision += 1;
+            markUsed(reference);
             return {ok:true, record:structuredClone(reference)};
           }
           case "SAVE_NAME": {
@@ -48,6 +54,7 @@
             if (reference.lifecycleRevision !== c.lifecycleRevision || reference.generation !== c.generation) return fail("stale-reference");
             if (typeof c.name !== "string" || c.name.trim().length > 120) return fail("invalid-name");
             reference.name = c.name.trim();
+            markUsed(reference);
             return {ok:true, record:structuredClone(reference)};
           }
           case "CREATE_TAG": {
@@ -58,7 +65,7 @@
             if (c.pinIds?.length && records.some(r=>c.bases?.[r.pinId]?.generation!==r.generation||c.bases?.[r.pinId]?.lifecycleRevision!==r.lifecycleRevision)) return fail("stale-reference");
             const tagId = id();
             state.tags[tagId] = {tagId,name,color:"#a9c6ff",revision:0}; state.tagOrder.push(tagId);
-            if (c.pinIds?.length) records.forEach(r=>assignments(r,tagId,true));
+            if (c.pinIds?.length) records.forEach(r=>{assignments(r,tagId,true);markUsed(r);});
             return {ok:true,tagId};
           }
           case "ASSIGN_TAG": {
@@ -67,7 +74,15 @@
               const base = c.bases?.[r.pinId];
               if (!base || base.generation !== r.generation || base.lifecycleRevision !== r.lifecycleRevision || base.revision !== (r.assignmentRevisions[c.tagId] || 0)) return fail("stale-assignment");
             }
-            records.forEach(r=>assignments(r,c.tagId,Boolean(c.assigned))); break;
+            records.forEach(r=>{assignments(r,c.tagId,Boolean(c.assigned));markUsed(r);}); break;
+          }
+          case "TOUCH_REFERENCES": {
+            // Viewing a Reference records use. Unknown or Trashed ids are ignored rather than failing,
+            // because a view is incidental to whatever the user was actually doing.
+            const seen = records.filter(Boolean)
+              .filter(r => Date.parse(now()) - Date.parse(r.lastUsedAt || r.addedToPinRefAt || 0) >= USE_COALESCING_MS);
+            if (!seen.length) return {ok:true, persist:false};
+            seen.forEach(markUsed); break;
           }
           case "EDIT_TAG": {
             if (!tag || tag.revision !== c.baseRevision) return fail("stale-tag");
@@ -142,7 +157,7 @@
             if (!attempt || attempt.status !== "confirmed") return fail("save-not-confirmed");
             if (state.trash[attempt.pinId]) {attempt.status="in-trash";break;}
             if (!state.references[attempt.pinId]) state.references[attempt.pinId]={pinId:attempt.pinId,generation:id(),url:`https://www.pinterest.com/pin/${attempt.pinId}/`,previewUrl:attempt.previewUrl,
-              tags:[],note:"",noteRevision:0,lifecycleRevision:0,assignmentRevisions:{},linkStatus:"unknown",addedToPinRefAt:now()};
+              tags:[],note:"",noteRevision:0,lifecycleRevision:0,assignmentRevisions:{},linkStatus:"unknown",addedToPinRefAt:now(),lastUsedAt:now()};
             delete state.attempts[c.attemptId]; break;
           }
           case "DISMISS_ATTEMPT": delete state.attempts[c.attemptId]; break;

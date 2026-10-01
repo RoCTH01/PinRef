@@ -6,7 +6,7 @@
   if(inspectorOnly)document.body.classList.add("inspector-embed");
   let dashboardPort=null,dashboardWindowId=null,dashboardTabId=null,closing=false;
   const v={state:null,destination:"library",query:"",tagQuery:"",filter:null,selected:new Set(),tagSelection:new Set(),activeNote:null,
-    sidebarOpen:!compact.matches,sortRecent:true,picker:false,pickerQuery:"",tagEditor:null,inspectorClosed:false,inspectorRequested:false,panelConnected:false,message:"",busy:false,position:null,imageRatios:new Map()};
+    sidebarOpen:!compact.matches,sortRecent:true,picker:false,pickerQuery:"",tagEditor:null,inspectorClosed:false,inspectorRequested:false,panelConnected:false,message:"",busy:false,position:null,imageRatios:new Map(),usedOrder:null};
   const notes=createNotes({getState:()=>v.state,changed:()=>render()});
   const names=PinRefUI.createNames({getState:()=>v.state,changed:()=>render(),feedback:text=>{v.message=text;}});
   const referenceName=PinRefUI.referenceName;
@@ -48,11 +48,19 @@
     const suggestions=tags().filter(t=>t.name.toLowerCase().includes(v.query.trim().toLowerCase())).slice(0,8);
     return `<div class="search-box" ${compact.matches&&v.sidebarOpen?"inert":""}><span>⌕</span><input data-search data-focus="search" aria-label="Search Library" placeholder="Search Names, Tags and Notes" value="${e(v.query)}" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="${Boolean(v.suggestions)}" aria-controls="search-suggestions">${v.suggestions?`<div id="search-suggestions" class="search-suggestions" role="listbox" aria-label="Tag suggestions"><div class="suggestion-heading">Filter by Tag</div>${suggestions.map(t=>button(`<i style="--item-color:${e(t.color)}"></i><span>${e(t.name)}</span><small>${tagCount(t.tagId)}</small>`,`data-suggest="${e(t.tagId)}" data-focus="suggest-${e(t.tagId)}" role="option" aria-selected="false"`,"suggestion-item")).join("")||'<p class="muted">No matching Tags. Search still includes committed Notes.</p>'}</div>`:""}</div>`;
   }
+  const lastUsedAt = record => String(record.lastUsedAt || record.addedToPinRefAt || "");
+  // Recently used pins its order on arrival. Using a Reference while the view is open would otherwise
+  // reorder the Gallery under the pointer; the order catches up when the filter or destination changes.
+  function usedRank(record) {
+    if (!v.usedOrder) return lastUsedAt(record);
+    return v.usedOrder.get(record.pinId) ?? lastUsedAt(record);
+  }
   function filtered() {
     const q=v.query.trim().toLowerCase();
+    const key=v.destination==="recent"?usedRank:(r=>String(r.addedToPinRefAt));
     return Object.values(v.state.references).filter(r=>(!v.filter||r.tags.includes(v.filter))&&(v.destination!=="untagged"||!r.tags.length)&&
       (!q||`${r.name||""} ${r.pinId} ${r.note} ${r.tags.map(id=>v.state.tags[id]?.name||"").join(" ")}`.toLowerCase().includes(q)))
-      .sort((a,b)=>v.sortRecent?String(b.addedToPinRefAt).localeCompare(a.addedToPinRefAt):String(a.addedToPinRefAt).localeCompare(b.addedToPinRefAt));
+      .sort((a,b)=>v.sortRecent?key(b).localeCompare(key(a)):key(a).localeCompare(key(b)));
   }
   async function act(c) {
     if(v.busy)return {ok:false};
@@ -66,12 +74,12 @@
   }
   function sidebar() {
     const s=v.state,records=Object.values(s.references);
-    const items=[["library","All Pins",records.length,"▦"],["recent","Recently added",records.length,"◷"],["untagged","Untagged",records.filter(r=>!r.tags.length).length,"◇"],["attention","Needs Attention",Object.keys(s.attempts).length,"!"],["trash","Trash",Object.keys(s.trash).length,"⌫"],["import-guide","How to import","","↓"]];
-    return `<aside id="sidebar" class="library-sidebar" aria-label="Dashboard navigation" ${!v.sidebarOpen?"inert":""}><div class="sidebar-brand"><strong>PinRef</strong></div><nav>${items.map(([id,label,count,icon])=>button(`<span>${icon}</span><span>${label}</span><em>${count}</em>`,`data-destination="${id}" data-focus="nav-${id}"`,`sidebar-item ${v.destination===id&&!v.filter?"active":""}`)).join("")}<section class="sidebar-section tags-section"><div class="sidebar-heading">${v.tagSelection.size?`<div class="sidebar-selection-head"><strong>${v.tagSelection.size} Tags selected</strong>${button("Delete","data-delete-tags","danger")}${button("×",'data-clear-tags aria-label="Clear Tag selection"',"")}</div>`:`<span>Tags <em class="sidebar-heading-count">${tags().length}</em></span>${button("+",'data-create-tag aria-label="Create Tag"',"")}`}</div><div class="sidebar-tag-search"><input aria-label="Search Tags" data-tag-query data-focus="tag-query" placeholder="Search Tags" value="${e(v.tagQuery)}"></div><div class="sidebar-tag-list" data-scroll="tags">${tags().filter(t=>t.name.toLowerCase().includes(v.tagQuery.toLowerCase())).map(t=>`<div class="tag-row-control" draggable="true" data-drag-tag="${e(t.tagId)}"><input type="checkbox" aria-label="Select Tag ${e(t.name)}" data-tag-select="${e(t.tagId)}" ${v.tagSelection.has(t.tagId)?"checked":""}>${button(`<span class="tag-dot" style="--tag-color:${e(t.color)}"></span><span>${e(t.name)}</span><em>${tagCount(t.tagId)}</em>`,`data-filter="${e(t.tagId)}" data-focus="tag-${e(t.tagId)}"`,`sidebar-item ${v.filter===t.tagId?"active":""}`)}${button("···",`data-edit-tag="${e(t.tagId)}" data-focus="sidebar-edit-${e(t.tagId)}" aria-label="Manage Tag ${e(t.name)}"`,"tag-more")}</div>`).join("")||'<p class="muted">No matching Tags</p>'}</div></section></nav><footer class="sidebar-footer">${button(`◐ <strong>${s.preferences.theme==="light"?"Dark":"Light"} theme</strong>`,"data-theme","sidebar-footer-button")}<small class="muted">Local to this browser profile.<br>Pinterest is never changed.</small></footer></aside>`;
+    const items=[["library","All Pins",records.length,"▦"],["recent","Recently used",records.length,"◷"],["untagged","Untagged",records.filter(r=>!r.tags.length).length,"◇"],["attention","Needs Attention",Object.keys(s.attempts).length,"!"],["trash","Trash",Object.keys(s.trash).length,"⌫"],["import-guide","How to import","","↓"]];
+    return `<aside id="sidebar" class="library-sidebar" aria-label="Dashboard navigation" ${!v.sidebarOpen?"inert":""}><div class="sidebar-brand"><strong>PinRef</strong></div><nav>${items.map(([id,label,count,icon])=>button(`<span>${icon}</span><span>${label}</span><em>${count}</em>`,`data-destination="${id}" data-focus="nav-${id}"`,`sidebar-item ${v.destination===id&&!v.filter?"active":""}`)).join("")}<section class="sidebar-section tags-section"><div class="sidebar-heading">${v.tagSelection.size?`<div class="sidebar-selection-head"><strong>${v.tagSelection.size} Tags selected</strong>${button("Delete","data-delete-tags","danger")}${button("×",'data-clear-tags aria-label="Clear Tag selection"',"")}</div>`:`<span>Tags <em class="sidebar-heading-count">${tags().length}</em></span>${button("+",'data-create-tag aria-label="Create Tag"',"")}`}</div><div class="sidebar-tag-search"><input aria-label="Search Tags" data-tag-query data-focus="tag-query" placeholder="Search Tags" value="${e(v.tagQuery)}"></div><div class="sidebar-tag-list" data-scroll="tags">${tags().filter(t=>t.name.toLowerCase().includes(v.tagQuery.toLowerCase())).map(t=>`<div class="tag-row-control" draggable="true" data-drag-tag="${e(t.tagId)}"><input type="checkbox" aria-label="Select Tag ${e(t.name)}" data-tag-select="${e(t.tagId)}" ${v.tagSelection.has(t.tagId)?"checked":""}>${button(`<span class="tag-dot" style="--tag-color:${e(t.color)}"></span><span>${e(t.name)}</span><em>${tagCount(t.tagId)}</em>`,`data-filter="${e(t.tagId)}" data-focus="tag-${e(t.tagId)}"`,`sidebar-item ${v.filter===t.tagId?"active":""}`)}${button("···",`data-edit-tag="${e(t.tagId)}" data-focus="sidebar-edit-${e(t.tagId)}" aria-label="Manage Tag ${e(t.name)}"`,"tag-more")}</div>`).join("")||'<p class="muted">No matching Tags</p>'}</div></section></nav><footer class="sidebar-footer">${button(`◐ <strong>${s.preferences.theme==="light"?"Dark":"Light"} theme</strong>`,"data-theme","sidebar-footer-button")}</footer></aside>`;
   }
   function gallery() {
     const records=filtered();
-    return `<header class="contact-header"><div class="topbar-primary"></div><div class="gallery-toolbar"><div class="gallery-context"><strong>${e(v.filter?v.state.tags[v.filter]?.name||"Tags":v.destination==="untagged"?"Untagged":v.destination==="recent"?"Recently added":"All Pins")}</strong><span>${records.length}</span></div><div class="gallery-controls">${button(v.sortRecent?"Newest first ↓":"Oldest first ↑","data-sort","compact-sort")}<div class="layout-switcher" aria-label="Gallery layout">${["masonry","waterfall"].map(mode=>button(mode==="masonry"?"▦ Masonry":"▥ Waterfall",`data-layout="${mode}" aria-pressed="${v.state.preferences.galleryMode===mode}"`,`layout-option ${v.state.preferences.galleryMode===mode?"active":""}`)).join("")}</div>${button("◫",`data-dock aria-label="${v.state.preferences.inspectorMode==="docked"?"Float":"Dock"} Inspector"`,"icon-button")}</div></div></header>${records.length?`<div class="contact-sheet mode-${v.state.preferences.galleryMode}" aria-label="Library Contact Sheet">${records.map(r=>`<article class="ref-card ${v.selected.has(r.pinId)?"selected":""}" data-card="${r.pinId}" style="--masonry-span:16">${button(`${image(r,"card-art")}`,`data-select="${r.pinId}" data-focus="pin-${r.pinId}" aria-label="Select Pin ${r.pinId}" aria-pressed="${v.selected.has(r.pinId)}"`,"card-select")}${button("",`data-toggle-select="${r.pinId}" data-focus="toggle-${r.pinId}" aria-label="Toggle selection of Pin ${r.pinId}" aria-pressed="${v.selected.has(r.pinId)}"`,"select-box")}</article>`).join("")}</div>`:`<section class="empty-card"><span class="empty-icon">◇</span><h2>${Object.keys(v.state.references).length?"No matching References":"Your local Library is empty"}</h2><p>${Object.keys(v.state.references).length?"Try another search or Tag filter.":"Open Saved Pins or a Board on Pinterest, then use the PinRef Side Panel to import."}</p>${button("How to import",'data-destination="import-guide"')}</section>`}`;
+    return `<header class="contact-header"><div class="topbar-primary"></div><div class="gallery-toolbar"><div class="gallery-context"><strong>${e(v.filter?v.state.tags[v.filter]?.name||"Tags":v.destination==="untagged"?"Untagged":v.destination==="recent"?"Recently used":"All Pins")}</strong><span>${records.length}</span></div><div class="gallery-controls">${button(v.destination==="recent"?(v.sortRecent?"Recently used ↓":"Least recent ↑"):(v.sortRecent?"Newest first ↓":"Oldest first ↑"),"data-sort","compact-sort")}<div class="layout-switcher" aria-label="Gallery layout">${["masonry","waterfall"].map(mode=>button(mode==="masonry"?"▦ Masonry":"▥ Waterfall",`data-layout="${mode}" aria-pressed="${v.state.preferences.galleryMode===mode}"`,`layout-option ${v.state.preferences.galleryMode===mode?"active":""}`)).join("")}</div>${button("◫",`data-dock aria-label="${v.state.preferences.inspectorMode==="docked"?"Float":"Dock"} Inspector"`,"icon-button")}</div></div></header>${records.length?`<div class="contact-sheet mode-${v.state.preferences.galleryMode}" aria-label="Library Contact Sheet">${records.map(r=>`<article class="ref-card ${v.selected.has(r.pinId)?"selected":""}" data-card="${r.pinId}" style="--masonry-span:16">${button(`${image(r,"card-art")}`,`data-select="${r.pinId}" data-focus="pin-${r.pinId}" aria-label="Select Pin ${r.pinId}" aria-pressed="${v.selected.has(r.pinId)}"`,"card-select")}${button("",`data-toggle-select="${r.pinId}" data-focus="toggle-${r.pinId}" aria-label="Toggle selection of Pin ${r.pinId}" aria-pressed="${v.selected.has(r.pinId)}"`,"select-box")}</article>`).join("")}</div>`:`<section class="empty-card"><span class="empty-icon">◇</span><h2>${Object.keys(v.state.references).length?"No matching References":"Your local Library is empty"}</h2><p>${Object.keys(v.state.references).length?"Try another search or Tag filter.":"Open Saved Pins or a Board on Pinterest, then use the PinRef Side Panel to import."}</p>${button("How to import",'data-destination="import-guide"')}</section>`}`;
   }
   function attention() {
     return `<section class="needs-attention"><header><h1>Needs Attention</h1><p>Capture Attempts are not References. Pinterest Save must be confirmed before a local commit.</p></header><div class="attempt-list">${Object.values(v.state.attempts).map(a=>`<article class="attempt-card"><div><h2>Pin ${e(a.pinId)}</h2><p>${a.status==="confirmed"?"Pinterest Save confirmed · local save needs retry":a.status==="in-trash"?"In Trash · restore from Trash if wanted":a.status==="pending"?"Waiting for Pinterest Save confirmation…":"Save not confirmed. No Reference was added."}</p><a href="https://www.pinterest.com/pin/${a.pinId}/" target="_blank" rel="noopener">Open on Pinterest ↗</a></div><div class="attempt-actions">${a.status==="confirmed"?button("Retry local save",`data-capture-retry="${e(a.attemptId)}"`):a.status!=="in-trash"?button("Check again",`data-capture-check="${e(a.attemptId)}"`):""}${button("Dismiss",`data-dismiss-attempt="${e(a.attemptId)}"`)}</div></article>`).join("")||'<p class="empty-card">Nothing needs attention.</p>'}</div></section>`;
@@ -90,7 +98,9 @@
     const common=records.length?records[0].tags.filter(id=>records.every(r=>r.tags.includes(id))):[];
     const placement=v.position&&mode==="floating"&&!compact.matches?`style="left:${v.position.left}px;top:${v.position.top}px;right:auto;bottom:auto"`:"";
     const titlebar = `<header class="panel-titlebar draggable-titlebar">`
-      + `<div class="panel-heading"><strong>Inspector</strong><small>${records.length ? `${records.length} selected` : "No selection"}</small></div>`
+      + `<div class="panel-heading"><strong>Inspector</strong><small>${records.length ? `${records.length} selected` : "No selection"}</small>`
+      + (records.length ? button("Clear", 'data-clear-selection aria-label="Clear selection"', "inspector-clear") : "")
+      + `</div>`
       + `<span class="spacer"></span>`
       + (inspectorOnly ? "" : button("↺", 'data-reset-position aria-label="Reset Inspector position"', "panel-toolbar-button"))
       + button("◫", `data-dock aria-label="${mode === "docked" ? "Float" : "Dock"} Inspector"`, "panel-toolbar-button")
@@ -123,9 +133,10 @@
     return `<aside class="inspector-panel ${mode}" aria-label="Inspector" ${placement}>${titlebar}`
       + `<div class="inspector-body detail-content" data-scroll="inspector">${overview}${tagSection}${noteTabs}${notes.html(active.pinId)}`
       + `<dl class="detail-grid"><dt>Added to PinRef</dt><dd>${e(new Date(active.addedToPinRefAt).toLocaleString())}</dd></dl>`
+      + `<div class="inspector-footer">`
       + `<a class="open-source-button" href="https://www.pinterest.com/pin/${active.pinId}/" target="_blank" rel="noopener">View on Pinterest ↗</a>`
-      + button(`Move ${records.length} to Trash`, "data-trash", "quiet-button danger")
-      + `<div class="inspector-actions">${button("Clear selection", "data-clear-selection", "inspector-clear")}</div></div></aside>`;
+      + button(`Move ${records.length} to Trash`, "data-trash", "inspector-trash")
+      + `</div></div></aside>`;
   }
   // A dragged Floating Inspector keeps its position only while it fits; growing content or a smaller window pulls it back on screen.
   function keepOnScreen(panel) {
@@ -183,7 +194,18 @@
     if(galleryScroll!==undefined)app.querySelector('[data-scroll="gallery"]')?.scrollTo(0,galleryScroll);
     publishSelection();
   }
-  async function changeFilter(update){await notes.flush();v.selected.clear();v.activeNote=null;v.inspectorRequested=false;v.picker=false;update();render();}
+  // Selecting a Reference in the Gallery is a view. It never blocks or reports, because the user came
+  // to inspect the Reference rather than to write to it; the pinned order keeps the result off screen.
+  function recordUse(pinIds){
+    if(pinIds.length)command({type:"TOUCH_REFERENCES",pinIds}).catch(()=>{});
+  }
+  async function changeFilter(update){await notes.flush();v.selected.clear();v.activeNote=null;v.inspectorRequested=false;v.picker=false;update();pinUsedOrder();render();}
+  // Entering Recently used, or changing what it shows, is the moment its order is allowed to move.
+  function pinUsedOrder(){
+    v.usedOrder=v.destination==="recent"&&v.state
+      ? new Map(Object.values(v.state.references).map(r=>[r.pinId,lastUsedAt(r)]))
+      : null;
+  }
   async function closeTagEditor(){await saveTagName();v.tagEditor=null;render();const opener=app.querySelector(`[data-focus="${CSS.escape(v.tagOpener||"")}"]`);(opener&&!opener.closest("[inert]")?opener:app.querySelector("[data-open]"))?.focus();}
   async function saveTagName() {
     const edit=v.tagEditor;if(!edit)return true;if(edit.saving)return edit.saving;
@@ -222,9 +244,9 @@
       // A Floating Inspector never coexists with an open Side Panel.
       if(result.ok&&!toDock)closeNativeInspector();
     });
-    on("[data-select]",async(el,ev)=>{if(v.state.preferences.inspectorMode==="docked")openNativeInspector();await notes.flush();const id=el.dataset.select;if(ev.shiftKey&&v.anchor){const ids=filtered().map(r=>r.pinId),a=ids.indexOf(v.anchor),b=ids.indexOf(id);if(a>=0)ids.slice(Math.min(a,b),Math.max(a,b)+1).forEach(id=>v.selected.add(id));}else if(ev.metaKey||ev.ctrlKey){if(v.selected.has(id))v.selected.delete(id);else v.selected.add(id);}else v.selected=v.selected.size===1&&v.selected.has(id)?new Set():new Set([id]);v.anchor=id;v.inspectorClosed=false;v.activeNote=id;render();});
+    on("[data-select]",async(el,ev)=>{if(v.state.preferences.inspectorMode==="docked")openNativeInspector();await notes.flush();const id=el.dataset.select;if(ev.shiftKey&&v.anchor){const ids=filtered().map(r=>r.pinId),a=ids.indexOf(v.anchor),b=ids.indexOf(id);if(a>=0)ids.slice(Math.min(a,b),Math.max(a,b)+1).forEach(id=>v.selected.add(id));}else if(ev.metaKey||ev.ctrlKey){if(v.selected.has(id))v.selected.delete(id);else v.selected.add(id);}else v.selected=v.selected.size===1&&v.selected.has(id)?new Set():new Set([id]);v.anchor=id;v.inspectorClosed=false;v.activeNote=id;recordUse([...v.selected]);render();});
     on("[data-clear-selection]",()=>{if(inspectorOnly){chrome.windows.getCurrent().then(window=>chrome.runtime.sendMessage({type:"pinref:clearDashboardSelection",windowId:window.id}));v.selected.clear();v.activeNote=null;render();}else changeFilter(()=>{});});
-    on("[data-toggle-select]",async el=>{if(v.state.preferences.inspectorMode==="docked")openNativeInspector();await notes.flush();const id=el.dataset.toggleSelect;if(v.selected.has(id))v.selected.delete(id);else v.selected.add(id);v.anchor=id;v.activeNote=id;v.inspectorClosed=false;render();});
+    on("[data-toggle-select]",async el=>{if(v.state.preferences.inspectorMode==="docked")openNativeInspector();await notes.flush();const id=el.dataset.toggleSelect;if(v.selected.has(id))v.selected.delete(id);else v.selected.add(id);v.anchor=id;v.activeNote=id;v.inspectorClosed=false;recordUse([...v.selected]);render();});
     on("[data-close-inspector]",async()=>{await notes.flush();v.inspectorClosed=true;v.inspectorRequested=false;render();app.querySelector(`[data-select="${v.anchor}"]`)?.focus();});
     on("[data-reset-position]",()=>{v.position=null;render();});
     on("[data-note-tab]",async el=>{await notes.flush();v.activeNote=el.dataset.noteTab;render();});
