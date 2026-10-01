@@ -6,7 +6,16 @@
   const attempts=new Map();
   let route=location.href,context=null,pickerContext=null,identityUnavailable=false;
   const pinId=value=>{try{const u=new URL(value,location.href);return u.protocol==="https:"&&/(^|\.)pinterest\.com$/i.test(u.hostname)?u.pathname.match(/^\/pin\/(?:[^/]*--)?(\d{6,})\/?$/)?.[1]||null:null;}catch{return null;}};
-  const preview=root=>{const img=root?.querySelector('img[src*="i.pinimg.com"]');try{const u=new URL(img?.currentSrc||img?.src);return u.protocol==="https:"&&u.hostname==="i.pinimg.com"?u.href:null;}catch{return null;}};
+  const area=el=>{const r=el.getBoundingClientRect();return r.width*r.height;};
+  // A Pin with several images renders its thumbnails beside the one the Pin is of, so the preview
+  // is the largest image in scope rather than the first one in document order.
+  const pinImageUrl=img=>{try{const u=new URL(img?.currentSrc||img?.src);return u.protocol==="https:"&&u.hostname==="i.pinimg.com"?u.href:null;}catch{return null;}};
+  const scopeImages=root=>[...(root?.querySelectorAll('img[src*="i.pinimg.com"]')||[])].filter(visible).sort((a,b)=>area(b)-area(a));
+  const heroImage=root=>scopeImages(root)[0]||null;
+  const preview=root=>pinImageUrl(heroImage(root));
+  // A Pin can be of several images: one is shown and the rest sit in a thumbnail strip. Report them
+  // largest first so the Pin's own image leads, and let PinRef offer the others for browsing.
+  const previews=root=>[...new Set(scopeImages(root).map(pinImageUrl).filter(Boolean))];
   const labels=control=>[control?.getAttribute("aria-label"),control?.getAttribute("title"),control?.textContent].map(x=>String(x||"").replace(/\s+/g," ").trim());
   const boardSelector=control=>labels(control).some(x=>/select.*board|choose.*board|(?:選擇|选择).*(?:圖版|圖板|图板|看板)/i.test(x));
   const unsaved=control=>!boardSelector(control)&&labels(control).some(x=>/^(save|儲存|保存)$/i.test(x));
@@ -19,17 +28,19 @@
   const pinIdsIn=root=>[...new Set([...root.querySelectorAll('a[href*="/pin/"]')].map(a=>pinId(a.href)).filter(Boolean))];
   function detail() {
     const id=pinId(location.href);if(!id)return null;
-    const root=document.querySelector(CLOSEUP);
-    const controls=[...(root?.querySelectorAll('button,[role="button"]')||[])].filter(visible);
+    const root=closeupRoot();
+    // A related card inside the closeup carries its own Save control, which says nothing about this Pin.
+    const controls=[...(root?.querySelectorAll('button,[role="button"]')||[])].filter(c=>visible(c)&&!c.closest(CARD));
     const status=visible(document.querySelector('[data-test-id="pin-unavailable"]'))?"unavailable":controls.some(saved)?"saved":controls.some(unsaved)?"not-saved":"unknown";
-    return {pinId:id,url:location.href,previewUrl:preview(root),kind:"detail",status};
+    return {pinId:id,url:location.href,previewUrl:preview(root),previewUrls:previews(root),kind:"detail",status};
   }
   function feedCard(card) {
     const ids=pinIdsIn(card);
-    return ids.length===1 ? {pinId:ids[0],url:location.href,previewUrl:preview(card),kind:"feed",card} : null;
+    return ids.length===1 ? {pinId:ids[0],url:location.href,previewUrl:preview(card),previewUrls:previews(card),kind:"feed",card} : null;
   }
   function cardContext(control) {
-    const root=control.closest(CLOSEUP);
+    const derived=closeupRoot();
+    const root=control.closest(CLOSEUP)||(derived?.contains(control)?derived:null);
     const current=root ? detail() : null;
     const closeup=()=>current ? {...current,card:root} : null;
     const card=control.closest(CARD);
@@ -48,7 +59,8 @@
     if(location.href!==route){route=location.href;context=null;pickerContext=null;identityUnavailable=false;}
     // An explicit native Save prioritizes its Pin over the page's closeup Pin until the route changes (ADR-0012).
     const current=context||detail();
-    return {ok:true,url:location.href,pinId:current?.pinId||null,previewUrl:current?.previewUrl||null,status:current?.status||"unknown",identityUnavailable};
+    return {ok:true,url:location.href,pinId:current?.pinId||null,previewUrl:current?.previewUrl||null,
+      previewUrls:current?.previewUrls||[],status:current?.status||"unknown",identityUnavailable};
   }
   function reportContext(){send({type:"pinref:contextChanged",...snapshot()});}
   function sameIdentity(live) {
@@ -59,7 +71,26 @@
     const ids=[...new Set([...live.card.querySelectorAll('a[href*="/pin/"]')].map(a=>pinId(a.href)).filter(Boolean))];
     return pinId(location.href)===live.pinId || ids.length===1&&ids[0]===live.pinId;
   }
-  const closeupRoot=()=>document.querySelector(CLOSEUP);
+  const saveControl=control=>!boardSelector(control)&&(unsaved(control)||saved(control));
+  // Pinterest's closeup test ids do not cover every layout; product and multi-image Pins declare
+  // none of them, which left those Pins with no preview, no Save status and no way to confirm a
+  // Save. On a Pin route the page is about that Pin, so derive the closeup structurally instead:
+  // anchor on the Pin's own image and take the nearest ancestor that also holds its Save control.
+  function closeupRoot() {
+    const declared=document.querySelector(CLOSEUP);
+    if(declared)return declared;
+    if(!pinId(location.href))return null;
+
+    const id=pinId(location.href);
+    // An image wrapped in a link to another Pin belongs to that Pin. Without this the largest image
+    // on the page can be a related Pin, which would bind the closeup to the wrong Reference.
+    const own=img=>!img.closest(CARD)&&[img.closest('a[href*="/pin/"]')].every(link=>!link||pinId(link.href)===id);
+    const hero=[...document.querySelectorAll('img[src*="i.pinimg.com"]')].filter(img=>visible(img)&&own(img)).sort((a,b)=>area(b)-area(a))[0];
+    if(!hero)return null;
+    for(let el=hero.parentElement,depth=0;el&&el!==document.body&&depth<16;el=el.parentElement,depth++)
+      if([...el.querySelectorAll('button,[role="button"]')].some(c=>visible(c)&&!c.closest(CARD)&&saveControl(c)))return el;
+    return null;
+  }
   // Pinterest may re-render the Save control after a native Save, replacing the clicked node.
   // Fall back to the same Pin's card or closeup and look for its Saved control there.
   function replacementScope(live) {
@@ -97,11 +128,11 @@
     const source=found||(fromPicker?pickerContext:null);if(!source){identityUnavailable=true;context=null;reportContext();return;}
     identityUnavailable=false;
     if([...attempts.values()].some(a=>!a.finished&&a.pinId===source.pinId))return;
-    context={pinId:source.pinId,url:location.href,previewUrl:source.previewUrl};reportContext();
+    context={pinId:source.pinId,url:location.href,previewUrl:source.previewUrl,previewUrls:source.previewUrls||[]};reportContext();
     const attemptId=crypto.randomUUID();const live={...source,attemptId,control,dialog,picker:fromPicker,route:location.href,finished:false};
     live.savedAtClick=scopeShowsSaved(live);attempts.set(attemptId,live);
     // Observe before async storage returns: a fast Pinterest transition must not be missed.
-    const start=send({type:"pinref:captureStarted",attemptId,pinId:source.pinId,url:location.href,previewUrl:source.previewUrl});
+    const start=send({type:"pinref:captureStarted",attemptId,pinId:source.pinId,url:location.href,previewUrl:source.previewUrl,previewUrls:source.previewUrls||[]});
     start.then(result=>{
       if(!result.ok){live.finished=true;return;}
       live.observer=new MutationObserver(()=>inspect(live));live.observer.observe(document.documentElement,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:["aria-label","title"]});

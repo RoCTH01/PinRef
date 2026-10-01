@@ -260,3 +260,35 @@ test("Capture Attempts stay aligned with the Library: no Attempt for an existing
   await lifecycle("RESTORE","123456789");
   assert.equal(JSON.stringify(await attempts()),JSON.stringify([]),"an in-Trash Attempt is resolved once its Pin is restored");
 });
+
+test("a Pin of several images records all of them on capture, and an older Reference catches up the next time Pinterest shows it",async()=>{
+  const h=createBrowser();
+  h.tabs.get(41).url="https://www.pinterest.com/pin/123456789/";
+  const sender={tab:h.tabs.get(41),documentId:"doc-a",frameId:0,url:h.tabs.get(41).url};
+  const first="https://i.pinimg.com/736x/aa/bb/cc/one.jpg";
+  const second="https://i.pinimg.com/236x/aa/bb/cc/two.jpg";
+  const third="https://i.pinimg.com/236x/aa/bb/cc/three.jpg";
+
+  await h.message({type:"pinref:captureStarted",attemptId:"capture-1",pinId:"123456789",url:h.tabs.get(41).url,
+    previewUrl:first,previewUrls:[first,second,"http://evil.example.com/x.jpg"]},sender);
+  await h.message({type:"pinref:captureEvidence",attemptId:"capture-1",pinId:"123456789",confirmed:true},sender);
+  const saved=(await h.state()).references["123456789"];
+  assert.equal(JSON.stringify([...saved.images]),JSON.stringify([first,second]),"every image Pinterest showed for the Pin is recorded, and only i.pinimg.com ones");
+  assert.equal(saved.previewUrl,first,"the Pin's own image stays the Reference preview");
+
+  // Seeing the Pin again reveals an image PinRef had not observed.
+  h.chrome.tabs.snapshots.set(41,{pinId:"123456789",previewUrl:second,previewUrls:[second,third],status:"saved"});
+  await h.state();
+  await h.settle();
+  const after=(await h.state()).references["123456789"];
+  assert.equal(JSON.stringify([...after.images]),JSON.stringify([first,second,third]),"a newly shown image is added to the Reference");
+  assert.equal(after.previewUrl,first,"backfilling images never changes the Reference preview");
+  assert.equal(after.generation,saved.generation,"backfilling images never changes Pin identity");
+  assert.equal(after.addedToPinRefAt,saved.addedToPinRefAt,"backfilling images never changes when the Pin was added");
+
+  // Nothing new to record must not write, or every panel refresh would bump the Library revision.
+  const before=h.getDisk();
+  await h.state();
+  await h.settle();
+  assert.equal(JSON.stringify(h.getDisk()),JSON.stringify(before),"seeing only images PinRef already has writes nothing");
+});

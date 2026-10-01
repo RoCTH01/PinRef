@@ -15,9 +15,48 @@
   document.addEventListener("pointercancel",finishInteraction,true);
   document.addEventListener("compositionend",finishInteraction,true);
   function deferRender(render){if(pointerActive||document.activeElement?.isComposing){deferredRenders.add(render);return true;}return false;}
+  const pinImage=url=>/^https:\/\/i\.pinimg\.com\//i.test(url || "");
+  // Which of a Pin's images the user is looking at is a glance, not an edit, so it lives here for
+  // both surfaces and is never written to the Reference.
+  const shownImage=new Map();
+  const imagesOf=record=>{
+    const all=[...new Set([...(record?.images || []), ...(record?.previewUrls || []),
+      ...(pinImage(record?.previewUrl) ? [record.previewUrl] : [])])].filter(pinImage);
+    return all.length ? all : pinImage(record?.previewUrl) ? [record.previewUrl] : [];
+  };
+  // Pinterest serves one image at many renditions under the same path, and a thumbnail strip is
+  // observed at its small one. Ask for a large rendition and fall back to what was observed.
+  const large=url=>url.replace(/^(https:\/\/i\.pinimg\.com\/)[^/]+\//i,"$1736x/");
   function image(record, className="") {
-    const safe=/^https:\/\/i\.pinimg\.com\//i.test(record?.previewUrl || "");
-    return `<div class="art ${className}">${safe ? `<img src="${escape(record.previewUrl)}" alt="Preview of Pin ${escape(record.pinId)}" loading="lazy" referrerpolicy="no-referrer">` : '<span class="preview-fallback">Preview unavailable</span>'}</div>`;
+    const all=imagesOf(record);
+    const shown=all.includes(shownImage.get(record?.pinId)) ? shownImage.get(record.pinId) : all[0];
+    if (!shown) return `<div class="art ${className}"><span class="preview-fallback">Preview unavailable</span></div>`;
+    const index=all.indexOf(shown);
+    const alt=all.length>1 ? `Image ${index+1} of ${all.length} for Pin ${escape(record.pinId)}` : `Preview of Pin ${escape(record.pinId)}`;
+    return `<div class="art ${className}"><img src="${escape(large(shown))}" data-fallback="${escape(shown)}" alt="${alt}" loading="lazy" referrerpolicy="no-referrer"></div>`;
+  }
+  function imageStrip(record) {
+    const all=imagesOf(record);
+    if (all.length<2) return "";
+    const shown=all.includes(shownImage.get(record.pinId)) ? shownImage.get(record.pinId) : all[0];
+    return `<div class="image-strip" role="group" aria-label="Images for Pin ${escape(record.pinId)}">`
+      + all.map((url,i)=>`<button class="image-strip-item${url===shown?" active":""}" data-show-image="${escape(url)}" data-image-pin="${escape(record.pinId)}"`
+        + ` aria-pressed="${url===shown}" aria-label="Show image ${i+1} of ${all.length}">`
+        + `<img src="${escape(url)}" alt="" loading="lazy" referrerpolicy="no-referrer"></button>`).join("")
+      + `</div>`;
+  }
+  const showImage=(pinId,url)=>{shownImage.set(pinId,url);};
+  // The large rendition is a request for a size Pinterest may not serve, so a failure falls back to
+  // the image as observed before it is reported as unavailable.
+  function bindImages(root) {
+    root.querySelectorAll("img").forEach((img)=>img.addEventListener("error",()=>{
+      const fallback=img.dataset.fallback;
+      if (fallback && img.src!==fallback) { delete img.dataset.fallback; img.src=fallback; return; }
+      const placeholder=document.createElement("span");
+      placeholder.className="preview-placeholder preview-fallback";
+      placeholder.textContent="Preview unavailable";
+      img.replaceWith(placeholder);
+    }));
   }
   function preserveRender(root, render) {
     renderingDepth+=1;
@@ -212,5 +251,5 @@
       handle.addEventListener("pointermove",move);handle.addEventListener("pointerup",end);handle.addEventListener("pointercancel",end);
     });
   }
-  window.PinRefUI={escape,command,image,preserveRender,createNotes,createNames,referenceName,assignmentCommand,createTagCommand,lifecycleCommand,drag,deferRender,isRendering:()=>renderingDepth>0};
+  window.PinRefUI={escape,command,image,imageStrip,showImage,bindImages,preserveRender,createNotes,createNames,referenceName,assignmentCommand,createTagCommand,lifecycleCommand,drag,deferRender,isRendering:()=>renderingDepth>0};
 })();

@@ -1,6 +1,6 @@
 (function () {
   "use strict";
-  const { escape: e, image, command, createNotes, createNames, assignmentCommand } = PinRefUI;
+  const { escape: e, image, imageStrip, showImage, command, createNotes, createNames, assignmentCommand } = PinRefUI;
 
   // This Pin mirrors the Dashboard Inspector's markup and classes (ADR-0013) within its Pinterest restrictions.
   window.createContextView = ({ getState, changed, feedback }) => {
@@ -133,7 +133,7 @@
         : "Not in PinRef";
 
       return `<section class="context-card detail-content">`
-        + `<section class="selection-overview">${image(record || trash || s.context, "summary-art")}`
+        + `<section class="selection-overview">${image(record || trash || s.context, "summary-art")}${imageStrip(record || trash || s.context)}`
         + `<div class="selection-overview-copy">${record ? names.html(record) : `<h2>Pin ${e(pin)}</h2>`}<p>${status}</p></div></section>`
         + (attempt ? attemptHtml(attempt) : "")
         + (record ? tagsHtml(s, record) + referenceHtml(pin, record) : absentHtml(s, trash))
@@ -163,6 +163,7 @@
       const s = getState();
       const pin = s.context?.pinId;
       const on = (selector, fn, event = "click") => root.querySelectorAll(selector).forEach((el) => el.addEventListener(event, (ev) => fn(el, ev)));
+      on("[data-show-image]", (el) => { showImage(el.dataset.imagePin, el.dataset.showImage); changed(); });
       notes.bind(root);
       names.bind(root);
 

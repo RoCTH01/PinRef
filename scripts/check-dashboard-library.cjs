@@ -223,8 +223,31 @@ const {createBrowser}=require("./browser-fixture.cjs");
     assert.equal(Object.keys((await state()).attempts).length,0);
     assert.equal((await state()).references["222222222"],undefined,"Dismiss never creates a Reference");
 
+    // A Pin can be of several images. The Inspector lets the user look through them, and looking is
+    // a glance that never edits the Reference.
+    const images=[1,2,3].map(n=>`https://i.pinimg.com/736x/aa/bb/cc/image-${n}.jpg`);
+    h.tabs.get(41).url="https://www.pinterest.com/pin/777777777/";
+    const pinSender={tab:h.tabs.get(41),documentId:"doc-multi",frameId:0,url:h.tabs.get(41).url};
+    const begun=await h.message({type:"pinref:captureStarted",attemptId:"multi",pinId:"777777777",url:h.tabs.get(41).url,
+      previewUrl:images[0],previewUrls:images},pinSender);
+    assert.equal(begun.ok,true,"a native Save on a Pin of several images starts a Capture Attempt");
+    await h.message({type:"pinref:captureEvidence",attemptId:"multi",pinId:"777777777",confirmed:true},pinSender);
+    assert.ok((await state()).references["777777777"],"the confirmed Save creates the Reference");
+    notify();
+    await page.locator('[data-destination="library"]').click();
+    await page.locator('[data-select="777777777"]').click();
+    const strip=page.locator(".inspector-panel .image-strip-item");
+    await strip.first().waitFor();
+    assert.equal(await strip.count(),3,"the Inspector offers each of the Pin's images");
+    assert.equal(await strip.nth(0).getAttribute("aria-pressed"),"true","the Pin's own image is the one shown first");
+    await strip.nth(2).click();
+    await page.locator(`.inspector-panel .summary-art img[data-fallback="${images[2]}"]`).waitFor();
+    assert.equal(await strip.nth(2).getAttribute("aria-pressed"),"true","the image being looked at is the pressed one");
+    const looked=(await state()).references["777777777"];
+    assert.equal(looked.previewUrl,images[0],"looking through a Pin's images never changes the Reference preview");
+
     assert.deepEqual(errors,[]);
-    console.log("PASS: Dashboard Tag picker, global Tag editor, guarded delete, Undo, search, Trash and Needs Attention");
+    console.log("PASS: Dashboard Tag picker, global Tag editor, guarded delete, Undo, search, Trash, Needs Attention and multi-image Pins");
   } catch(error) {
     for(const page of pages.keys())if(!page.isClosed())await page.screenshot({path:"/tmp/pinref-dashboard-library.png"});
     throw error;

@@ -18,7 +18,16 @@ function createBrowser() {
     runtime:{ getURL:url, onMessage:event(), onConnect:event() },
     action:{ onClicked:event() },
     sidePanel:{ onClosed:event(), opened:[], options:new Map(), defaults:null, async setPanelBehavior(value){this.behavior=value;}, async setOptions(options){if(options.tabId===undefined)this.defaults=options;else this.options.set(options.tabId,options);}, async open(options){this.opened.push(options);} },
-    tabs:{ onActivated:event(), onCreated:event(), onUpdated:event(), onRemoved:event(), async get(id){if(!tabs.has(id))throw new Error("closed");return tabs.get(id);}, async query(query){return [...tabs.values()].filter(tab=>(query.windowId === undefined || tab.windowId===query.windowId)&&(!query.active || tab.active));}, created:[], async create(options){this.created.push(options);return {id:999,...options};}, async sendMessage(id,message){if(message.type === "pinref:stopImportScan")stopped.push({id,...message});return {ok:true};} },
+    // What the content script reports for a tab. Tests set it to stand in for what Pinterest renders.
+    tabs:{ snapshots:new Map(), onActivated:event(), onCreated:event(), onUpdated:event(), onRemoved:event(), async get(id){if(!tabs.has(id))throw new Error("closed");return tabs.get(id);}, async query(query){return [...tabs.values()].filter(tab=>(query.windowId === undefined || tab.windowId===query.windowId)&&(!query.active || tab.active));}, created:[], async create(options){this.created.push(options);return {id:999,...options};}, async sendMessage(id,message){
+      if(message.type === "pinref:stopImportScan")stopped.push({id,...message});
+      if(message.type === "pinref:contextSnapshot"){
+        const snapshot=this.snapshots.get(id);
+        if(!snapshot)throw new Error("no receiver");
+        return {ok:true,url:tabs.get(id)?.url,status:"unknown",previewUrls:[],...snapshot};
+      }
+      return {ok:true};
+    } },
     windows:{ onFocusChanged:event(), async get(id){return windows.get(id);} },
     permissions:{ onRemoved:event(), async contains(){return true;} },
     scripting:{ async executeScript(){} },

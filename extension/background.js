@@ -140,6 +140,12 @@ async function panelState(windowId, attempt=0) {
   // so routine panel refreshes on one Pin record use once rather than on every refresh.
   if (context?.pinId && state.references[context.pinId]) {
     executeSerial({type:"TOUCH_REFERENCES", pinIds:[context.pinId]}, library).catch(console.error);
+    // Pinterest is showing this Pin's images right now. Recording ones PinRef never saw is add-only
+    // and costs no request, so a Reference saved before PinRef read whole image sets catches up
+    // the next time the user opens it (ADR-0015, revised).
+    if (context.previewUrls?.length) {
+      executeSerial({type:"RECORD_PIN_IMAGES", pinId:context.pinId, previewUrls:context.previewUrls}, library).catch(console.error);
+    }
   }
   const [activeNow]=await chrome.tabs.query({active:true,windowId});
   if(activeNow?.id!==tab?.id||activeNow?.url!==tab?.url){
@@ -162,11 +168,12 @@ async function contextForTab(tab) {
     const detail=PinRefImportDomain.pageContextForUrl(tab.url);
     const captured=capturedContexts.get(tab.id);
     const explicitSave=captured?.url===tab.url&&captured.pinId===result.pinId;
-    if(detail.kind==="pin"&&result.pinId!==detail.pinId&&!explicitSave)return {pinId:detail.pinId,previewUrl:null};
-    return result?.pinId?{pinId:result.pinId,previewUrl:PinRefLibrary.safePreview(result.previewUrl),status:result.status||"unknown"}:result?.identityUnavailable?{identityUnavailable:true}:null;
+    if(detail.kind==="pin"&&result.pinId!==detail.pinId&&!explicitSave)return {pinId:detail.pinId,previewUrl:null,previewUrls:[]};
+    return result?.pinId?{pinId:result.pinId,previewUrl:PinRefLibrary.safePreview(result.previewUrl),
+      previewUrls:Array.isArray(result.previewUrls)?result.previewUrls:[],status:result.status||"unknown"}:result?.identityUnavailable?{identityUnavailable:true}:null;
   } catch {
     const detail=PinRefImportDomain.pageContextForUrl(tab.url);
-    return detail.kind==="pin"?{pinId:detail.pinId,previewUrl:null,accessUnavailable:true}:null;
+    return detail.kind==="pin"?{pinId:detail.pinId,previewUrl:null,previewUrls:[],accessUnavailable:true}:null;
   }
 }
 
@@ -184,7 +191,7 @@ async function handleMessage(message, sender) {
     const tab=await browser.getTab(sender.tab.id);
     if(tab?.url!==message.url)return {ok:false,reason:"stale-context"};
     await interruptMatching(s=>s.originTabId===tab.id,"native-save");
-    const result=await executeSerial({type:"BEGIN_CAPTURE",attemptId:message.attemptId,pinId:message.pinId,tabId:tab.id,documentId:sender.documentId,url:message.url,previewUrl:message.previewUrl},library);
+    const result=await executeSerial({type:"BEGIN_CAPTURE",attemptId:message.attemptId,pinId:message.pinId,tabId:tab.id,documentId:sender.documentId,url:message.url,previewUrl:message.previewUrl,previewUrls:message.previewUrls},library);
     if(result.ok)capturedContexts.set(tab.id,{pinId:message.pinId,url:message.url});
     if(result.ok)for(const [port,windowId] of panelPorts)if(windowId===tab.windowId&&tab.active)port.postMessage({type:"capture-started"});
     return result;

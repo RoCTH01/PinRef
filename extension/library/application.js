@@ -13,6 +13,8 @@
     try { const url = new URL(value); return url.protocol === "https:" && url.hostname === "i.pinimg.com" ? url.href : null; }
     catch { return null; }
   };
+  const MAX_PIN_IMAGES = 24;
+  const safePreviews = value => [...new Set((Array.isArray(value) ? value : []).map(safePreview).filter(Boolean))].slice(0, MAX_PIN_IMAGES);
   function createApplication({repository, now = () => new Date().toISOString(), id = () => crypto.randomUUID()}) {
     async function execute(c) {
       return repository.updateState(state => {
@@ -146,7 +148,7 @@
             // the content script observing Pinterest for an outcome PinRef would discard.
             if (state.references[c.pinId]) return fail("reference-exists");
             state.attempts[c.attemptId]={attemptId:c.attemptId,pinId:c.pinId,originTabId:c.tabId,documentId:c.documentId,url:c.url,
-              previewUrl:safePreview(c.previewUrl),status:"pending",createdAt:now()}; break;
+              previewUrl:safePreview(c.previewUrl),images:safePreviews(c.previewUrls),status:"pending",createdAt:now()}; break;
           }
           case "CAPTURE_OUTCOME": {
             const attempt=state.attempts[c.attemptId];
@@ -160,8 +162,20 @@
             if (!attempt || attempt.status !== "confirmed") return fail("save-not-confirmed");
             if (state.trash[attempt.pinId]) {attempt.status="in-trash";break;}
             if (!state.references[attempt.pinId]) state.references[attempt.pinId]={pinId:attempt.pinId,generation:id(),url:`https://www.pinterest.com/pin/${attempt.pinId}/`,previewUrl:attempt.previewUrl,
+              images:attempt.images?.length?[...attempt.images]:safePreviews([attempt.previewUrl]),
               tags:[],note:"",noteRevision:0,lifecycleRevision:0,assignmentRevisions:{},linkStatus:"unknown",addedToPinRefAt:now(),lastUsedAt:now()};
             delete state.attempts[c.attemptId]; break;
+          }
+          case "RECORD_PIN_IMAGES": {
+            // Add-only: a Pin the user already has can reveal images PinRef never saw, and recording
+            // them must never touch the Reference's own preview, identity or any edited field
+            // (ADR-0015). PinRef only writes what Pinterest already rendered; it never fetches.
+            const record=state.references[c.pinId];
+            const observed=safePreviews(c.previewUrls);
+            if (!record || !observed.length) return {ok:true, persist:false};
+            const added=observed.filter(url=>!record.images.includes(url));
+            if (!added.length) return {ok:true, persist:false};
+            record.images=[...record.images, ...added].slice(0, MAX_PIN_IMAGES); break;
           }
           case "DISMISS_ATTEMPT": delete state.attempts[c.attemptId]; break;
           case "RECOVER_CAPTURES":

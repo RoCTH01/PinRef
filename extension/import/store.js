@@ -42,6 +42,9 @@
         generation:record.generation || `legacy:${id}:${record.addedToPinRefAt || ""}`,
         lifecycleRevision:record.lifecycleRevision || 0, assignmentRevisions:{...record.assignmentRevisions},
         linkStatus:record.linkStatus || "unknown",
+        // A Pin can be of several images. Records written before PinRef read the whole set carry
+        // only the one it previewed; the rest are added when Pinterest shows them again.
+        images:[...new Set([...(record.images || []), ...(record.previewUrl ? [record.previewUrl] : [])])],
         // Existing References have never recorded use; the moment they entered PinRef is the honest answer.
         lastUsedAt:record.lastUsedAt || record.addedToPinRefAt || null }];
     }));
@@ -122,6 +125,9 @@
           generation: crypto.randomUUID(),
           url: `https://www.pinterest.com/pin/${candidate.pinId}/`,
           previewUrl: candidate.previewUrl || null,
+          // Import reads a feed card, which shows one image even when the Pin is of several. The
+          // rest are recorded the next time Pinterest shows the Pin itself.
+          images: candidate.previewUrl ? [candidate.previewUrl] : [],
           tags: [],
           note: "",
           noteRevision: 0,

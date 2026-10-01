@@ -10,4 +10,6 @@ A Capture Attempt exists only while its Reference does not, so it is resolved as
 
 Dashboard collects these identity-known, incomplete attempts on a dedicated Needs Attention page. Content without a reliable Pin identity is not persisted as a provisional item: PinRef reports that it could not identify the Pin and performs no local write.
 
+Revised on 2026-10-02. "Does not silently refresh metadata" stays the rule for everything the user owns or PinRef derived: the preview, the Pin identity, when it was added, Tags and Notes. Recording an image PinRef had never observed is the single exception, because a Pin of several images is partly unrecorded rather than stale (ADR-0015, revised).
+
 Revised on 2026-10-01.

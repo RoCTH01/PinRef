@@ -1,6 +1,6 @@
 (function () {
   "use strict";
-  const {escape:e,command,image,preserveRender,createNotes,assignmentCommand,drag}=PinRefUI;
+  const {escape:e,command,image,imageStrip,showImage,bindImages,preserveRender,createNotes,assignmentCommand,drag}=PinRefUI;
   const app=document.querySelector("#app"), compact=matchMedia("(max-width:900px)");
   const inspectorOnly=new URLSearchParams(location.search).get("inspector")==="1";
   if(inspectorOnly)document.body.classList.add("inspector-embed");
@@ -112,7 +112,8 @@
     }
     const multiple = records.length > 1;
     const overview = `<section class="selection-overview">`
-      + (multiple ? `<div class="stacked-thumbnails">${records.slice(0, 3).map(r => image(r, "stack-art")).join("")}</div>` : image(active, "summary-art"))
+      + (multiple ? `<div class="stacked-thumbnails">${records.slice(0, 3).map(r => image(r, "stack-art")).join("")}</div>`
+        : image(active, "summary-art") + imageStrip(active))
       + `<div class="selection-overview-copy">${multiple ? `<h2>${records.length} References</h2>` : names.html(active)}<p>In PinRef · saved locally</p></div></section>`;
     const tagChips = common.map(id => {
       const name = e(v.state.tags[id]?.name);
@@ -192,6 +193,7 @@
     // Restore after image ratios are applied: restoring during the DOM replacement
     // can clamp the scroll position against the temporary, shorter gallery.
     if(galleryScroll!==undefined)app.querySelector('[data-scroll="gallery"]')?.scrollTo(0,galleryScroll);
+    bindImages(app);
     publishSelection();
   }
   // Selecting a Reference in the Gallery is a view. It never blocks or reports, because the user came
@@ -227,6 +229,7 @@
     on("[data-close]",()=>{v.sidebarOpen=false;render();focusAfterRender("[data-open]");});
     on("[data-destination]",el=>changeFilter(()=>{v.destination=el.dataset.destination;v.filter=null;if(v.destination==="recent")v.sortRecent=true;if(compact.matches)v.sidebarOpen=false;}));
     on("[data-filter]",el=>changeFilter(()=>{v.destination="library";v.filter=el.dataset.filter;if(compact.matches)v.sidebarOpen=false;}));
+    on("[data-show-image]",el=>{showImage(el.dataset.imagePin,el.dataset.showImage);render();});
     on("[data-search]",el=>{v.query=el.value;v.selected.clear();v.activeNote=null;v.picker=false;v.suggestions=true;notes.flush();render();},"input");
     on("[data-search]",()=>{if(!v.suggestions&&!v.suppressSuggestions&&!PinRefUI.isRendering()){v.suggestions=true;render();}},"focus");
     on("[data-search]",(_,ev)=>{if(ev.key==="ArrowDown"){ev.preventDefault();app.querySelector("[data-suggest]")?.focus();}},"keydown");

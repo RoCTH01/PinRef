@@ -167,7 +167,7 @@
     bind();
     if (!view.busy && view.focus) root.querySelector(view.focus)?.focus({preventScroll:true});
     window.scrollTo(0,scroll);
-    root.querySelectorAll("img").forEach((img)=>img.addEventListener("error",()=>{const fallback=document.createElement("span");fallback.className="preview-placeholder";fallback.textContent="Preview unavailable";img.replaceWith(fallback);},{once:true}));
+    PinRefUI.bindImages(root);
   }
 
   // Ask the embedded Dashboard Inspector to commit pending Note text before it is removed.

@@ -164,6 +164,34 @@ const {createBrowser}=require("./browser-fixture.cjs");
     await pinterest.locator("#save-main").evaluate(el=>{el.textContent="已儲存";});
     await reload.locator('[data-select="888888888"]').waitFor();
     await reopened.getByRole("textbox",{name:"Name for Pin 888888888",exact:true}).waitFor();
+    // Pinterest's closeup test ids do not cover every layout. A product Pin carrying a thumbnail
+    // carousel declares none of them, and its largest image is the Pin while the small ones are not.
+    const productUrl="https://www.pinterest.com/pin/459078657404357657/";h.tabs.get(41).url=productUrl;
+    const thumb=n=>`<img src="https://i.pinimg.com/thumb-${n}.png" style="width:56px;height:56px">`;
+    await pinterest.route(productUrl,route=>route.fulfill({contentType:"text/html",body:`<meta charset="utf-8"><div id="page">`
+      +`<div id="closeup"><div id="meta"><div id="carousel">${[1,2,3,4,5,6,7,8].map(thumb).join("")}</div>`
+      +`<div id="actions"><button id="save-product">儲存</button></div></div>`
+      +`<div id="hero"><img src="https://i.pinimg.com/hero.png" style="width:540px;height:760px"></div></div>`
+      +`<div id="related">${card("999999999")}</div></div>`}));
+    await pinterest.goto(productUrl);
+    await pinterest.addScriptTag({path:path.resolve(__dirname,"../extension/content/context-pin.js")});
+    await pinterest.evaluate(async()=>window.fixtureMessage({type:"pinref:contextChanged",url:location.href}));
+    await reopened.getByRole("heading",{name:"This Pin",exact:true}).waitFor();
+    const product=(await h.state()).context;
+    assert.equal(product.pinId,"459078657404357657");
+    assert.equal(product.previewUrl,"https://i.pinimg.com/hero.png","the carousel thumbnails are not the Pin's preview");
+    assert.equal(product.status,"not-saved","the Pin's own Save control is found without a declared closeup");
+    assert.deepEqual(product.previewUrls,
+      ["https://i.pinimg.com/hero.png",...[1,2,3,4,5,6,7,8].map(n=>`https://i.pinimg.com/thumb-${n}.png`)],
+      "every image the Pin is of is reported, the Pin's own one first");
+
+
+    // Confirmation has to work on this layout too, or the Save can never leave Needs Attention.
+    await pinterest.locator("#save-product").click();
+    await pinterest.locator("#actions").evaluate(el=>{el.replaceChildren(Object.assign(document.createElement("button"),{textContent:"已儲存"}));});
+    await reload.locator('[data-select="459078657404357657"]').waitFor();
+    assert.equal(Object.keys((await h.state()).attempts).length,0,"a confirmed Save leaves no Capture Attempt behind");
+
     assert.deepEqual(errors,[]);
     console.log("PASS: one-profile Import → Library → Tags/Note → selection/layout → Trash/Restore → native Save Capture → This Pin; desktop and compact");
   } catch(error) {for(const [page,surface] of pages)if(surface!=="pinterest"&&!page.isClosed()){await page.screenshot({path:`/tmp/pinref-failure-${surface}.png`});console.error(surface,await page.locator("body").innerText());}throw error;} finally {await browser.close();}

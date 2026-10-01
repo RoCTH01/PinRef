@@ -12,6 +12,10 @@ _Avoid_: Pending reference, saved reference
 A PinRef library item created either from a confirmed Capture Attempt or an explicit Bootstrap Import, after its local data commits successfully.
 _Avoid_: Capture attempt, Pinterest Save
 
+**Pin Image**:
+One of the images a Pin is of. A Pin may be of several, and Pinterest shows one with the rest in a strip beside it. A Reference records every Pin Image PinRef has observed, in the order Pinterest presented them; the first is also the Reference's preview. PinRef adds Pin Images it had never observed while Pinterest is already showing the Pin, and never removes or reorders the ones it has.
+_Avoid_: Variant, thumbnail, carousel slide
+
 **Library**:
 The collection of committed References available for management and retrieval in PinRef. Capture Attempts that need attention are presented separately and are not Library items.
 _Avoid_: Capture queue, Pinterest saves
