@@ -1,0 +1,171 @@
+(function exposeLibrary(root, factory) {
+  const api = factory();
+  if (typeof module === "object" && module.exports) module.exports = api;
+  root.PinRefLibrary = api;
+})(globalThis, function () {
+  "use strict";
+  const normalizedName = value => String(value || "").normalize("NFKC").trim().toLowerCase();
+  const fail = reason => ({ok:false, reason, persist:false});
+  const safePreview = value => {
+    try { const url = new URL(value); return url.protocol === "https:" && url.hostname === "i.pinimg.com" ? url.href : null; }
+    catch { return null; }
+  };
+  function createApplication({repository, now = () => new Date().toISOString(), id = () => crypto.randomUUID()}) {
+    async function execute(c) {
+      return repository.updateState(state => {
+        const records = (c.pinIds || [c.pinId]).map(pinId => state.references[pinId]);
+        const reference = state.references[c.pinId];
+        const tag = state.tags[c.tagId];
+        const validRecords = () => records.length && records.every(Boolean);
+        const collision = name => Object.values(state.tags).find(t => t.tagId !== c.tagId && normalizedName(t.name) === normalizedName(name));
+        const assignments = (record, tagId, assigned) => {
+          record.tags = assigned ? [...new Set([...record.tags, tagId])] : record.tags.filter(t => t !== tagId);
+          record.assignmentRevisions[tagId] = (record.assignmentRevisions[tagId] || 0) + 1;
+        };
+        const receipt = () => {
+          state.receipt = {id:id(), expiresAt:Date.parse(now()) + 15000, revision:state.libraryRevision + 1,
+            tags:structuredClone(state.tags), tagOrder:[...state.tagOrder],
+            assignments:Object.fromEntries([...Object.values(state.references), ...Object.values(state.trash)].map(r=>[r.pinId,{tags:[...r.tags],assignmentRevisions:{...r.assignmentRevisions}}]))};
+        };
+        switch (c.type) {
+          case "SET_PREFERENCE": {
+            const allowed = {theme:["light","dark"], galleryMode:["masonry","waterfall"], inspectorMode:["floating","docked"]};
+            if (!allowed[c.key]?.includes(c.value)) return fail("invalid-preference");
+            state.preferences[c.key] = c.value; break;
+          }
+          case "SAVE_DRAFT":
+          case "SAVE_NOTE": {
+            if (!reference) return fail("reference-not-active");
+            if (reference.lifecycleRevision !== c.lifecycleRevision || reference.generation !== c.generation) return fail("stale-reference");
+            if (!c.draftId || typeof c.text !== "string") return fail("invalid-draft");
+            state.drafts[c.draftId] = {draftId:c.draftId,ownerId:c.ownerId,pinId:c.pinId,text:c.text,baseRevision:c.baseRevision,lifecycleRevision:c.lifecycleRevision,generation:c.generation,updatedAt:now()};
+            if (c.type === "SAVE_DRAFT") break;
+            if (reference.noteRevision !== c.baseRevision) return {ok:false,reason:"note-conflict",latest:reference.note,revision:reference.noteRevision};
+            reference.note = c.text.trim() ? c.text : "";
+            reference.noteRevision += 1;
+            delete state.drafts[c.draftId]; return {ok:true,record:structuredClone(reference)};
+          }
+          case "DISCARD_DRAFT": delete state.drafts[c.draftId]; break;
+          case "CREATE_TAG": {
+            const name = String(c.name || "").trim();
+            if (!name || name.length > 80) return fail("invalid-tag-name");
+            if (collision(name)) return fail("tag-name-exists");
+            if (c.pinIds?.length && !validRecords()) return fail("reference-not-active");
+            if (c.pinIds?.length && records.some(r=>c.bases?.[r.pinId]?.generation!==r.generation||c.bases?.[r.pinId]?.lifecycleRevision!==r.lifecycleRevision)) return fail("stale-reference");
+            const tagId = id();
+            state.tags[tagId] = {tagId,name,color:"#a9c6ff",revision:0}; state.tagOrder.push(tagId);
+            if (c.pinIds?.length) records.forEach(r=>assignments(r,tagId,true));
+            return {ok:true,tagId};
+          }
+          case "ASSIGN_TAG": {
+            if (!tag || !validRecords()) return fail("reference-or-tag-unavailable");
+            for (const r of records) {
+              const base = c.bases?.[r.pinId];
+              if (!base || base.generation !== r.generation || base.lifecycleRevision !== r.lifecycleRevision || base.revision !== (r.assignmentRevisions[c.tagId] || 0)) return fail("stale-assignment");
+            }
+            records.forEach(r=>assignments(r,c.tagId,Boolean(c.assigned))); break;
+          }
+          case "EDIT_TAG": {
+            if (!tag || tag.revision !== c.baseRevision) return fail("stale-tag");
+            if (c.name !== undefined) {
+              const name=String(c.name).trim();
+              if (!name || name.length > 80) return fail("invalid-tag-name");
+              const target=collision(name);
+              if (target) return {...fail("tag-name-exists"),targetTagId:target.tagId};
+              tag.name=name;
+            }
+            if (c.color !== undefined) { if (!/^#[0-9a-f]{6}$/i.test(c.color)) return fail("invalid-color"); tag.color=c.color; }
+            tag.revision += 1; break;
+          }
+          case "REORDER_TAGS": {
+            if (!Array.isArray(c.tagIds) || new Set(c.tagIds).size !== state.tagOrder.length || c.tagIds.length !== state.tagOrder.length || c.tagIds.some(t=>!state.tags[t])) return fail("stale-tag-order");
+            if (JSON.stringify(c.baseOrder) !== JSON.stringify(state.tagOrder)) return fail("stale-tag-order");
+            state.tagOrder=[...c.tagIds]; break;
+          }
+          case "DELETE_TAGS":
+          case "MERGE_TAG": {
+            const ids = c.type === "MERGE_TAG" ? [c.tagId] : c.tagIds;
+            if (!ids?.length || ids.some(t=>!state.tags[t] || state.tags[t].revision !== c.bases?.[t])) return fail("stale-tag");
+            if (c.type === "MERGE_TAG" && (!state.tags[c.targetTagId] || ids.includes(c.targetTagId))) return fail("invalid-merge");
+            receipt();
+            for (const r of [...Object.values(state.references),...Object.values(state.trash)]) {
+              if (c.type === "MERGE_TAG" && r.tags.includes(c.tagId)) assignments(r,c.targetTagId,true);
+              for (const tagId of ids) if (r.tags.includes(tagId)) assignments(r,tagId,false);
+            }
+            ids.forEach(t=>delete state.tags[t]); state.tagOrder=state.tagOrder.filter(t=>!ids.includes(t));
+            return {ok:true,receiptId:state.receipt.id};
+          }
+          case "UNDO_TAG_CHANGE": {
+            const r=state.receipt;
+            if (!r || r.id !== c.receiptId || r.revision !== state.libraryRevision || Date.parse(now()) > r.expiresAt) return fail("undo-expired-or-stale");
+            state.tags=r.tags; state.tagOrder=r.tagOrder;
+            for (const record of [...Object.values(state.references),...Object.values(state.trash)]) {
+              if (r.assignments[record.pinId]) Object.assign(record,r.assignments[record.pinId]);
+            }
+            state.receipt=null; break;
+          }
+          case "TRASH": {
+            if (!validRecords()) return fail("reference-not-active");
+            if(records.some(r=>c.bases?.[r.pinId]?.generation!==r.generation||c.bases?.[r.pinId]?.lifecycleRevision!==r.lifecycleRevision))return fail("stale-reference");
+            if (Object.values(state.drafts).some(d=>c.pinIds.includes(d.pinId))) return fail("drafts-pending");
+            records.forEach(r=>{r.lifecycleRevision+=1; r.trashedAt=now();state.trash[r.pinId]=r;delete state.references[r.pinId];}); break;
+          }
+          case "RESTORE":
+          case "PERMANENT_DELETE": {
+            if (!c.pinIds?.length || c.pinIds.some(p=>!state.trash[p])) return fail("not-in-trash");
+            if(c.pinIds.some(p=>c.bases?.[p]?.generation!==state.trash[p].generation||c.bases?.[p]?.lifecycleRevision!==state.trash[p].lifecycleRevision))return fail("stale-reference");
+            if(c.type==="PERMANENT_DELETE")state.receipt=null;
+            for (const pinId of c.pinIds) {
+              if (c.type === "RESTORE") {const r=state.trash[pinId];r.lifecycleRevision+=1;delete r.trashedAt;state.references[pinId]=r;}
+              delete state.trash[pinId];
+              if(c.type==="PERMANENT_DELETE")for(const [key,draft] of Object.entries(state.drafts))if(draft.pinId===pinId)delete state.drafts[key];
+              for (const [key,pin] of Object.entries(state.operations)) if(pin===pinId) delete state.operations[key];
+            } break;
+          }
+          case "BEGIN_CAPTURE": {
+            if (!/^\d{6,}$/.test(c.pinId) || !c.attemptId || !Number.isInteger(c.tabId)) return fail("invalid-capture");
+            if (state.attempts[c.attemptId]) return fail("attempt-exists");
+            state.attempts[c.attemptId]={attemptId:c.attemptId,pinId:c.pinId,originTabId:c.tabId,documentId:c.documentId,url:c.url,
+              previewUrl:safePreview(c.previewUrl),status:"pending",createdAt:now()}; break;
+          }
+          case "CAPTURE_OUTCOME": {
+            const attempt=state.attempts[c.attemptId];
+            if (!attempt || attempt.originTabId !== c.tabId || attempt.documentId !== c.documentId || attempt.pinId !== c.pinId) return fail("stale-capture");
+            if (!["pending","unconfirmed"].includes(attempt.status)) return fail("capture-already-confirmed");
+            attempt.status=c.confirmed ? "confirmed" : "unconfirmed";
+            attempt.evidence=c.confirmed ? "same-control-saved-state" : "save-not-confirmed"; break;
+          }
+          case "COMMIT_CAPTURE": {
+            const attempt=state.attempts[c.attemptId];
+            if (!attempt || attempt.status !== "confirmed") return fail("save-not-confirmed");
+            if (state.trash[attempt.pinId]) {attempt.status="in-trash";break;}
+            if (!state.references[attempt.pinId]) state.references[attempt.pinId]={pinId:attempt.pinId,generation:id(),url:`https://www.pinterest.com/pin/${attempt.pinId}/`,previewUrl:attempt.previewUrl,
+              tags:[],note:"",noteRevision:0,lifecycleRevision:0,assignmentRevisions:{},linkStatus:"unknown",addedToPinRefAt:now()};
+            delete state.attempts[c.attemptId]; break;
+          }
+          case "DISMISS_ATTEMPT": delete state.attempts[c.attemptId]; break;
+          case "RECOVER_CAPTURES":
+            Object.values(state.attempts).forEach(a=>{if(a.status==="pending")a.status="unconfirmed";}); break;
+          case "INTERRUPT_CAPTURES":
+            Object.values(state.attempts).forEach(a=>{if(a.originTabId===c.tabId&&a.status==="pending")a.status="unconfirmed";}); break;
+          case "UPDATE_PREVIEW":
+          case "UPDATE_LINK_STATUS": {
+            if (!reference || c.lifecycleRevision !== reference.lifecycleRevision || c.generation !== reference.generation) return fail("stale-reference");
+            if (c.type === "UPDATE_PREVIEW") {
+              const preview=safePreview(c.previewUrl);
+              if (!preview) return fail("preview-unavailable");
+              reference.previewUrl=preview; reference.previewCheckedAt=now();
+            } else {
+              if (!["saved","not-saved","unavailable","unknown"].includes(c.status)) return fail("invalid-status");
+              reference.linkStatus=c.status; reference.linkCheckedAt=now();
+            } break;
+          }
+          default:return fail("unknown-library-command");
+        }
+        return {ok:true};
+      });
+    }
+    return {execute};
+  }
+  return {createApplication,safePreview};
+});

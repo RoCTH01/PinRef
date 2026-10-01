@@ -1,0 +1,118 @@
+const {chromium}=require("playwright");
+const assert=require("node:assert/strict");
+const path=require("node:path");
+const {pathToFileURL}=require("node:url");
+const {createBrowser}=require("./browser-fixture.cjs");
+
+// One profile, real worker + applications + repository. Only Chrome and Pinterest are fixtures.
+(async()=>{
+  const browser=await chromium.launch({executablePath:process.env.PINREF_BROWSER,headless:true});
+  const h=createBrowser(),context=await browser.newContext({viewport:{width:1440,height:1000}}),errors=[];
+  const pages=new Map();
+  const notify=()=>{for(const page of pages.keys())if(!page.isClosed())page.evaluate(()=>window.fixtureNotify?.()).catch(()=>{});};
+  try {
+    await context.route("https://i.pinimg.com/**",route=>route.fulfill({contentType:"image/svg+xml",body:'<svg xmlns="http://www.w3.org/2000/svg" width="400" height="500"><rect width="400" height="500" fill="#465955"/><circle cx="210" cy="180" r="110" fill="#c7aa78"/></svg>'}));
+    await context.exposeBinding("fixtureMessage",async({page},message)=>{
+      const surface=pages.get(page);
+      const sender=surface==="pinterest"?{url:h.tabs.get(41).url,tab:h.tabs.get(41),documentId:"pinterest-doc",frameId:0}:{url:h.url(`${surface}/index.html`)};
+      const result=await h.message(message,sender);
+      if(!message.type.startsWith("pinref:get")&&message.type!=="pinref:contextChanged")setImmediate(notify);
+      return structuredClone(result);
+    });
+    await context.addInitScript(()=>{
+      const listeners=[],content=[];
+      window.fixtureNotify=()=>listeners.forEach(fn=>fn({pinrefState:{}},"local"));
+      window.fixtureContent=message=>new Promise(resolve=>{
+        let async=false;for(const fn of content){if(fn(message,{},resolve)===true)async=true;}if(!content.length&&!async)resolve(null);
+      });
+      window.chrome={runtime:{sendMessage:m=>window.fixtureMessage(m),onMessage:{addListener:fn=>content.push(fn)},connect:()=>({onMessage:{addListener:fn=>setTimeout(()=>fn({type:"ready"}),0)},onDisconnect:{addListener(){}},postMessage(){},disconnect(){}})},windows:{getCurrent:async()=>({id:7})},storage:{onChanged:{addListener:fn=>listeners.push(fn)}},permissions:{request:async()=>true,remove:async()=>true}};
+    });
+    async function open(surface){const page=await context.newPage();pages.set(page,surface);page.on("pageerror",error=>errors.push(error.message));await page.goto(pathToFileURL(path.resolve(__dirname,`../extension/${surface}/index.html`)).href);return page;}
+    const {session}=await h.command({type:"START",tabId:41});
+    await h.scan(session,"OBSERVE_BATCH",[{pinId:"123456789",previewUrl:"https://i.pinimg.com/one.png"},{pinId:"987654321",previewUrl:"https://i.pinimg.com/two.png"}]);
+    await h.command({type:"STOP_REVIEW",sessionId:session.sessionId});
+    const panel=await open("sidepanel");await panel.locator('[data-action="SELECT_ALL_NEW"]').click();
+    await panel.locator('[data-action="IMPORT_SELECTED"]').click();await panel.getByText("2 Pins added to Library",{exact:true}).waitFor();
+    const dashboard=await open("dashboard");
+    await dashboard.locator('[data-select="123456789"]').click();
+    await dashboard.getByRole("button",{name:"Add Tag",exact:true}).click();
+    await dashboard.getByRole("textbox",{name:"Find or create Tag"}).fill("Inspiration");
+    await dashboard.getByRole("button",{name:"Create “Inspiration” & assign"}).click();
+    await dashboard.getByRole("button",{name:"Done",exact:true}).click();
+    await dashboard.waitForFunction(()=>document.querySelector('[data-filter] span:nth-child(2)')?.getBoundingClientRect().width>60);
+    await dashboard.getByRole("button",{name:"Globally rename Inspiration",exact:true}).click();
+    await dashboard.getByRole("textbox",{name:"Name",exact:true}).waitFor();
+    await dashboard.keyboard.press("Escape");
+    await dashboard.waitForFunction(()=>document.activeElement?.dataset.focus?.startsWith("inspector-edit-"));
+    const note=dashboard.getByRole("textbox",{name:"Note for Pin 123456789"});
+    await note.fill("Warm lighting study");
+    await dashboard.waitForFunction(()=>document.querySelector('.detail-section [role="status"]')?.textContent==="Saved");
+    assert.equal((await h.state()).references["123456789"].note,"Warm lighting study");
+    const storageSet=h.chrome.storage.local.set;
+    let failNote=true;
+    h.chrome.storage.local.set=async value=>{if(failNote&&value.pinrefState.references["123456789"]?.note==="My offline draft")throw new Error("storage unavailable");return storageSet(value);};
+    await note.fill("My offline draft");
+    await dashboard.getByText("Could not save — your draft is kept",{exact:true}).waitFor();
+    failNote=false;
+    const original=(await h.state()).references["123456789"];
+    await h.message({type:"pinref:libraryCommand",command:{type:"SAVE_NOTE",pinId:original.pinId,draftId:"other-editor",text:"Changed elsewhere",baseRevision:original.noteRevision,lifecycleRevision:original.lifecycleRevision,generation:original.generation}},{url:h.url("dashboard/index.html")});
+    notify();
+    await dashboard.getByRole("button",{name:"Retry save",exact:true}).click();
+    await dashboard.getByText("Updated elsewhere — your draft is kept",{exact:true}).waitFor();
+    assert.equal((await h.state()).references["123456789"].note,"Changed elsewhere");
+    await dashboard.getByRole("button",{name:"Use latest",exact:true}).click();
+    await dashboard.waitForFunction(()=>document.querySelector('[data-note="123456789"]').value==="Changed elsewhere");
+    await note.fill("Warm lighting study");
+    await dashboard.waitForFunction(()=>document.querySelector('.detail-section [role="status"]')?.textContent==="Saved");
+    await dashboard.locator('[data-select="987654321"]').click({modifiers:["Shift"]});
+    await dashboard.getByRole("heading",{name:"2 References",exact:true}).waitFor();
+    await dashboard.getByRole("button",{name:"Add Tag",exact:true}).click();
+    await dashboard.getByRole("button",{name:"Inspiration Add"}).click();await dashboard.getByRole("button",{name:"Done",exact:true}).click();
+    await dashboard.locator('[data-sort]').click();await dashboard.locator('[data-layout="masonry"]').click();
+    assert.equal(await dashboard.locator('[data-select][aria-pressed="true"]').count(),2);
+    await dashboard.getByRole("combobox",{name:"Search Library"}).fill("Warm lighting");
+    await dashboard.waitForFunction(()=>document.querySelectorAll('[data-select][aria-pressed="true"]').length===0&&document.querySelectorAll('[data-select]').length===1);
+    assert.equal(await dashboard.locator('[data-select][aria-pressed="true"]').count(),0);
+    assert.equal(await dashboard.locator('[data-select]').count(),1);
+    await dashboard.getByRole("combobox",{name:"Search Library"}).fill("");
+    await dashboard.locator('[data-select="123456789"]').click();
+    await dashboard.locator('[data-dock]').first().click();
+    await dashboard.locator('[data-clear-selection]').click();await dashboard.getByText("Select a Reference",{exact:true}).waitFor();
+    await dashboard.locator('[data-select="123456789"]').click();
+    dashboard.once("dialog",d=>d.accept());await dashboard.locator('[data-trash]').click();
+    await dashboard.locator('[data-destination="trash"]').click();await dashboard.getByRole("button",{name:"Restore",exact:true}).click();
+    await dashboard.locator('[data-destination="library"]').click();await dashboard.locator('[data-select="123456789"]').click();
+    assert.equal(await dashboard.getByRole("textbox",{name:"Note for Pin 123456789"}).inputValue(),"Warm lighting study");
+    await dashboard.screenshot({path:"/tmp/pinref-product-desktop.png"});
+    await dashboard.setViewportSize({width:390,height:844});
+    await dashboard.waitForFunction(()=>document.documentElement.scrollWidth<=innerWidth);
+    assert.equal(await dashboard.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+    await dashboard.screenshot({path:"/tmp/pinref-product-compact.png"});
+    // Native Save: bind to a concrete Pinterest card, then mutate only the fixture's own Save UI.
+    const pinterest=await context.newPage();pages.set(pinterest,"pinterest");
+    const pinUrl="https://www.pinterest.com/pin/555555555/";h.tabs.get(41).url=pinUrl;
+    await pinterest.route(pinUrl,route=>route.fulfill({contentType:"text/html",body:'<main data-test-id="pin-closeup"><img src="https://i.pinimg.com/three.png"><button id="save">Save</button></main>'}));
+    await pinterest.goto(pinUrl);
+    h.chrome.tabs.sendMessage=async(_id,message)=>pinterest.evaluate(m=>window.fixtureContent(m),message);
+    await pinterest.addScriptTag({path:path.resolve(__dirname,"../extension/content/context-pin.js")});
+    await pinterest.locator("#save").click();
+    await pinterest.waitForFunction(async()=>Boolean(await window.fixtureMessage({type:"pinref:contextChanged",url:location.href})));
+    await pinterest.locator("#save").evaluate(el=>{el.textContent="Saved";});
+    await dashboard.setViewportSize({width:1440,height:1000});
+    await dashboard.locator('[data-select="555555555"]').waitFor();
+    assert.equal(Object.keys((await h.state()).references).length,3);
+    const reopened=await open("sidepanel");await reopened.getByRole("heading",{name:"This Pin",exact:true}).waitFor();
+    await reopened.getByRole("heading",{name:"Pin 555555555",exact:true}).waitFor();
+    await reopened.getByRole("textbox",{name:"Note for Pin 555555555"}).fill("Written in This Pin");
+    await reopened.waitForFunction(()=>document.querySelector('.detail-section [role="status"]')?.textContent==="Saved");
+    await dashboard.locator('[data-select="555555555"]').click();
+    await dashboard.waitForFunction(()=>document.querySelector('[data-note="555555555"]')?.value==="Written in This Pin");
+    await reopened.locator("#theme").click();
+    await dashboard.waitForFunction(()=>document.documentElement.dataset.theme==="light");
+    await reopened.locator("[data-session]").click();
+    await reopened.getByText("2 Pins added to Library",{exact:true}).waitFor();
+    const reload=await open("dashboard");assert.equal(await reload.locator('[data-select][aria-pressed="true"]').count(),0);
+    assert.deepEqual(errors,[]);
+    console.log("PASS: one-profile Import → Library → Tags/Note → selection/layout → Trash/Restore → native Save Capture → This Pin; desktop and compact");
+  } catch(error) {for(const [page,surface] of pages)if(surface!=="pinterest"&&!page.isClosed()){await page.screenshot({path:`/tmp/pinref-failure-${surface}.png`});console.error(surface,await page.locator("body").innerText());}throw error;} finally {await browser.close();}
+})().catch(error=>{console.error(error);process.exitCode=1;});

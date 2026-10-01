@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#111315">
+    <title>PinRef · Side Panel</title>
+    <link rel="stylesheet" href="../library/tokens.css">
+    <link rel="stylesheet" href="../dashboard/dashboard.css">
+    <link rel="stylesheet" href="../dashboard/contact-sheet.css">
+    <link rel="stylesheet" href="../dashboard/production.css">
+    <link rel="stylesheet" href="panel.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#panel-main">Skip to content</a>
+    <header class="panel-header"><strong>PinRef</strong><nav aria-label="PinRef"><a href="../dashboard/index.html" target="_blank" rel="noopener">Dashboard <span class="sr-only">(opens a new tab)</span></a><button class="button quiet" id="theme" aria-label="Switch color theme">◐</button></nav></header>
+    <main id="panel-main" tabindex="-1" class="inspector-panel sidepanel-inspector" aria-label="PinRef Side Panel"><header class="panel-titlebar"><div class="panel-heading"><h1 id="mode-heading">PinRef</h1><small id="mode-context">Current page</small></div></header><div id="panel-content" class="inspector-body"><p>Connecting to PinRef…</p></div></main>
+    <p id="feedback" role="status" aria-live="polite" aria-atomic="true"></p>
+    <footer class="panel-footer">Stored in this browser profile. PinRef is an independent project, not affiliated with Pinterest.</footer>
+    <script src="../library/ui.js"></script>
+    <script src="context-view.js"></script>
+    <script src="panel.js"></script>
+  </body>
+</html>

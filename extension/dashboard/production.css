@@ -1,0 +1,41 @@
+.art { background:var(--panel-3); display:grid; place-items:center; }
+.art img { display:block; width:100%; height:100%; object-fit:cover; }
+.preview-fallback { padding:20px; color:var(--muted); font-size:12px; text-align:center; }
+.card-select { display:block; width:100%; padding:0; border:0; border-radius:12px; background:transparent; }
+.card-select:focus-visible .select-box { opacity:1; }
+.select-box:focus-visible { opacity:1; }
+.ref-card:focus-within .select-box { opacity:1; }
+.note-preview p { display:block; max-height:140px; overflow:auto; white-space:pre-wrap; }
+.card-art { aspect-ratio:var(--ratio,4/5); }
+@media(hover:none) { .select-box { opacity:1; } }
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+.skip-link { position:fixed; z-index:150; top:-100px; left:12px; padding:12px; background:var(--panel); color:var(--text); }
+.skip-link:focus { top:12px; }
+button:disabled { opacity:.5; cursor:not-allowed; }
+a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
+.empty-card { max-width:680px; margin:60px auto; padding:32px; border:1px solid var(--line); border-radius:18px; background:var(--panel); line-height:1.7; }
+.empty-card h2 { line-height:1.3; } .empty-card p { color:var(--muted); } .import-guide { margin-top:90px; }
+.tag-row-control { display:flex; align-items:center; gap:3px; } .tag-row-control input { accent-color:var(--accent-strong); }
+.tag-row-control .sidebar-item { min-width:0; flex:1; padding-inline:4px; } .tag-more { padding:6px; border:0; background:transparent; color:var(--muted); }
+.tag-row-control .tag-more { width:28px; flex:0 0 28px; }
+.tag-row-control:hover .tag-more,.tag-row-control:focus-within .tag-more { opacity:1; }
+.tag-row-control .sidebar-item { width:0; flex:1 1 0; }
+.tag-editor-panel { position:fixed; z-index:89; top:80px; left:calc(50% - 160px); width:min(340px,calc(100vw - 24px)); max-height:calc(100dvh - 100px); overflow:auto; padding:18px; border:1px solid var(--line); border-radius:16px; background:var(--panel); box-shadow:var(--shadow); display:grid; gap:14px; font-size:13px; }
+.tag-editor-panel header { display:flex; justify-content:space-between; align-items:center; } .tag-editor-panel label { display:grid; gap:8px; }
+.tag-editor-panel input { border:1px solid var(--line); border-radius:8px; padding:8px; background:var(--panel-2); width:100%; } .tag-editor-panel input[type=color] { width:60px; height:40px; padding:3px; }
+.editable-tag .tag-name { width:auto; height:auto; border-radius:4px; color:var(--text); }
+.editor-recovery { display:flex; flex-wrap:wrap; gap:8px; } .editor-recovery .quiet-button { min-height:34px; padding:6px 9px; font-size:11px; }
+.preserve-lines { white-space:pre-wrap; overflow-wrap:anywhere; } .detail-section h3 small { display:block; margin-top:4px; color:var(--muted); font-size:10px; font-weight:400; } .detail-grid dd { overflow-wrap:anywhere; }
+.trash-summary .summary-art { width:72px; height:72px; border-radius:10px; float:left; margin-right:14px; }
+.feedback-toast { position:fixed; z-index:100; bottom:16px; left:50%; transform:translateX(-50%); max-width:min(640px,calc(100vw - 32px)); padding:12px 18px; border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); background:var(--panel-2); font-size:12px; }
+.feedback-toast button { margin-left:8px; background:transparent; color:var(--accent); border:0; } .tag-picker { animation:none; }
+@media(max-width:900px) { .anchored-topbar .search-box,.contact { transition:none; } .tag-editor-panel { left:12px; right:12px; width:auto; } .inspector-panel .inspector-body { max-height:calc(66dvh - 58px); } }
+@media(prefers-reduced-motion:reduce) { * { scroll-behavior:auto!important; } }
+/* The native Chrome Side Panel hosts this exact Inspector, not a second copy. */
+body.inspector-embed { height:100dvh; min-height:0; overflow:hidden; }
+.inspector-embed .app { height:100dvh; min-height:0; }
+.inspector-embed .inspector-panel.docked { position:relative; inset:auto; width:100%; height:100dvh; max-height:none; border:0; border-radius:0; box-shadow:none; backdrop-filter:none; }
+.inspector-embed .inspector-panel .inspector-body { max-height:calc(100dvh - 49px); }
+.inspector-embed .inspector-panel .inspector-empty { min-height:calc(100dvh - 49px); }
+.inspector-embed .inspector-panel.docked.empty { max-height:none; }
+.inspector-embed .inspector-panel.docked.empty .inspector-empty { display:grid; place-content:center; justify-items:center; padding:28px; text-align:center; }

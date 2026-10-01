@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PinRef Inspector</title>
+    <link rel="stylesheet" href="sidepanel.css">
+  </head>
+  <body>
+    <main class="panel-shell">
+      <header class="panel-header">
+        <div class="brand"><strong>PinRef</strong><span id="library-count">0 references</span></div>
+        <div class="header-actions">
+          <button id="reload-metadata" class="icon-button reload-button" type="button" aria-label="Reload preview" title="Reload preview">↻</button>
+          <button id="open-dashboard" class="dashboard-button" type="button" title="Open Dashboard">
+            <span aria-hidden="true">▦</span><span>Dashboard</span>
+          </button>
+          <button id="close-panel" class="icon-button" type="button" aria-label="Close PinRef Side Panel" title="Close panel">×</button>
+        </div>
+      </header>
+      <p id="panel-message" class="panel-message" role="status" hidden></p>
+      <section id="content" aria-live="polite"></section>
+      <details class="debug-panel"><summary>Prototype state</summary><pre id="debug"></pre></details>
+    </main>
+    <script src="sidepanel.js"></script>
+  </body>
+</html>

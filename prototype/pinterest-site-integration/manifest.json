@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "PinRef Pinterest Integration — THROWAWAY",
+  "version": "0.0.21",
+  "description": "Throwaway prototype for Pinterest Save confirmation and explicit Dashboard-owned Pinterest Import sessions.",
+  "permissions": ["sidePanel", "storage", "tabs", "scripting", "activeTab"],
+  "optional_host_permissions": ["https://*.pinterest.com/*"],
+  "background": { "service_worker": "service-worker.js" },
+  "action": { "default_title": "Open PinRef Side Panel" },
+  "side_panel": { "default_path": "sidepanel.html" }
+}

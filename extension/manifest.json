@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "PinRef",
+  "version": "0.1.0",
+  "description": "Import existing Pinterest saves into a private local PinRef library.",
+  "minimum_chrome_version": "142",
+  "permissions": ["sidePanel", "storage", "scripting", "tabs", "activeTab"],
+  "optional_host_permissions": ["https://*.pinterest.com/*"],
+  "background": { "service_worker": "background.js" },
+  "side_panel": { "default_path": "sidepanel/index.html" },
+  "action": { "default_title": "Open PinRef" }
+}

@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PinRef Dashboard — Throwaway UI Prototype</title>
+  <!-- Winning Contact Sheet direction, refined to test constrained floating tools and one inspector model. -->
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg:#111315; --panel:#17191c; --panel-2:#1e2125; --panel-3:#282c31;
+      --text:#f3f3f1; --muted:#9b9da3; --line:rgba(255,255,255,.1); --soft:rgba(255,255,255,.055);
+      --accent:#a9c6ff; --accent-strong:#75a5ff; --danger:#ee8d92;
+      --shadow:0 24px 80px rgba(0,0,0,.34); --font:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    }
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --bg:#eeefed; --panel:#fafaf8; --panel-2:#f2f3f0; --panel-3:#e5e7e4;
+      --text:#202225; --muted:#6e7278; --line:rgba(20,24,30,.13); --soft:rgba(20,24,30,.055);
+      --accent:#345f9d; --accent-strong:#215ea9; --danger:#a53f47; --shadow:0 24px 80px rgba(30,32,35,.16);
+    }
+    * { box-sizing:border-box; }
+    html,body { margin:0; min-height:100%; background:var(--bg); color:var(--text); font-family:var(--font); }
+    body { height:100vh; overflow:hidden; }
+    button,input,textarea { font:inherit; color:inherit; }
+    button { cursor:pointer; }
+    button:focus-visible,input:focus-visible,textarea:focus-visible,[tabindex]:focus-visible {
+      outline:3px solid color-mix(in srgb,var(--accent-strong) 75%,transparent); outline-offset:2px;
+    }
+    .app { min-height:100vh; }
+    .prototype-badge {
+      display:none; position:fixed; z-index:90; top:10px; left:50%; transform:translateX(-50%); pointer-events:none;
+      padding:6px 10px; border:1px solid rgba(255,181,99,.42); border-radius:999px;
+      color:#ffd0a0; background:rgba(48,31,18,.88); backdrop-filter:blur(16px);
+      font-size:10px; font-weight:760; letter-spacing:.075em; text-transform:uppercase; white-space:nowrap;
+    }
+    .icon-button,.quiet-button,.pill,.tag-chip { border:1px solid var(--line); background:var(--soft); color:var(--text); }
+    .icon-button { width:40px; height:40px; border-radius:11px; display:grid; place-items:center; flex:0 0 auto; }
+    .icon-button:hover,.quiet-button:hover,.pill:hover,.tag-chip:hover,.menu-item:hover,.suggestion-item:hover { background:var(--panel-3); }
+    .quiet-button { min-height:40px; border-radius:11px; padding:8px 13px; }
+    .quiet-button.primary { background:var(--text); color:var(--bg); border-color:transparent; font-weight:720; }
+    .quiet-button.danger,.menu-item.danger { color:var(--danger); }
+    .muted { color:var(--muted); }
+    .eyebrow { color:var(--muted); font-size:10px; font-weight:780; letter-spacing:.1em; text-transform:uppercase; }
+    .divider { height:1px; background:var(--line); }
+
+    .search-box { position:relative; min-width:220px; flex:1; z-index:30; }
+    .search-box > span { position:absolute; left:14px; top:21px; transform:translateY(-50%); color:var(--muted); }
+    .search-box input { width:100%; height:42px; padding:0 64px 0 40px; border:1px solid var(--line); border-radius:13px; background:var(--soft); outline:0; }
+    .search-box input:focus { border-color:color-mix(in srgb,var(--accent) 55%,var(--line)); background:var(--panel-2); }
+    .search-box kbd { position:absolute; right:11px; top:9px; padding:4px 7px; color:var(--muted); background:var(--panel-3); border-radius:7px; font-size:11px; }
+    .search-suggestions { position:absolute; top:49px; left:0; right:0; max-height:286px; overflow-y:auto; padding:9px; border:1px solid var(--line); border-radius:14px; background:color-mix(in srgb,var(--panel) 97%,transparent); box-shadow:var(--shadow); backdrop-filter:blur(22px); }
+    .suggestion-heading { display:flex; justify-content:space-between; padding:5px 7px 8px; color:var(--muted); font-size:11px; }
+    .suggestion-item,.menu-item,.tag-option { width:100%; border:0; border-radius:9px; background:transparent; text-align:left; }
+    .suggestion-item { display:grid; grid-template-columns:10px 1fr auto; align-items:center; gap:9px; padding:9px 8px; }
+    .suggestion-item i,.tag-option i { width:8px; height:8px; border-radius:50%; background:var(--item-color); }
+    .suggestion-item small { color:var(--muted); }
+
+    .art { position:relative; overflow:hidden; isolation:isolate; background:var(--art-bg); }
+    .art::before { content:""; position:absolute; inset:0; opacity:.75; mix-blend-mode:screen; background:radial-gradient(circle at 66% 22%,rgba(255,255,255,.32),transparent 10%),linear-gradient(135deg,transparent 42%,rgba(255,255,255,.08) 43% 47%,transparent 48%),radial-gradient(ellipse at 50% 76%,rgba(0,0,0,.5),transparent 47%); }
+    .art::after { content:""; position:absolute; width:36%; height:62%; left:32%; bottom:-6%; background:linear-gradient(145deg,rgba(255,255,255,.36),rgba(7,8,10,.76)); border-radius:48% 48% 18% 18%/28% 28% 14% 14%; box-shadow:0 -52px 0 -22px rgba(5,5,7,.82),42px 28px 60px rgba(0,0,0,.34); transform:rotate(var(--pose,0deg)); filter:saturate(.75); }
+    .art-a{--art-bg:linear-gradient(150deg,#586776 0%,#252d36 42%,#101114 100%);--pose:-5deg}.art-b{--art-bg:linear-gradient(135deg,#382b43 0%,#953f62 52%,#101218 100%);--pose:8deg}.art-c{--art-bg:linear-gradient(145deg,#d3b9a5 0%,#a77f5f 43%,#343233 100%);--pose:-12deg}.art-d{--art-bg:linear-gradient(135deg,#42a4ad 0%,#f4cb5d 48%,#f5616c 73%,#334758 100%);--pose:12deg}.art-e{--art-bg:linear-gradient(145deg,#d3d0ca 0%,#7e8388 45%,#2b2d31 46%,#d8d4cd 100%);--pose:0deg}.art-f{--art-bg:linear-gradient(155deg,#132733 0%,#1f7582 34%,#cf554b 64%,#11131b 100%);--pose:-4deg}.art-g{--art-bg:linear-gradient(135deg,#d7d4d2 0%,#4e4d50 50%,#121317 100%);--pose:15deg}.art-h{--art-bg:linear-gradient(150deg,#b1c3d7 0%,#948cb0 48%,#322b4e 100%);--pose:-14deg}.art-i{--art-bg:linear-gradient(135deg,#04070c 0%,#20252c 44%,#831b27 100%);--pose:5deg}.art-j{--art-bg:linear-gradient(155deg,#bea98b 0%,#66735d 42%,#22282a 100%);--pose:-8deg}.art-k{--art-bg:linear-gradient(135deg,#b7d4e0 0%,#9baea8 43%,#243a44 100%);--pose:9deg}.art-l{--art-bg:linear-gradient(135deg,#5d2226 0%,#cc303c 50%,#131013 100%);--pose:-3deg}
+    .tag-row { display:flex; gap:5px; overflow:hidden; }
+    .tag { display:inline-flex; align-items:center; min-width:0; padding:4px 8px; border-radius:999px; background:color-mix(in srgb,var(--tag-color,#8f91a0) 30%,var(--panel-3)); border:1px solid color-mix(in srgb,var(--tag-color,#8f91a0) 30%,transparent); font-size:11px; line-height:1; white-space:nowrap; }
+    .ref-card { position:relative; min-width:0; break-inside:avoid; margin-bottom:12px; }
+    .ref-card .card-art { width:100%; aspect-ratio:var(--ratio,4/5); border-radius:12px; border:1px solid var(--line); transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease; }
+    .ref-card:hover .card-art { border-color:color-mix(in srgb,var(--text) 30%,transparent); transform:translateY(-2px); box-shadow:0 12px 30px rgba(0,0,0,.14); }
+    .ref-card.selected .card-art { border-color:var(--accent-strong); box-shadow:0 0 0 2px color-mix(in srgb,var(--accent-strong) 70%,transparent); }
+    .select-box { position:absolute; z-index:2; top:9px; left:9px; width:24px; height:24px; border-radius:6px; border:1px solid rgba(255,255,255,.65); background:rgba(13,15,18,.45); display:grid; place-items:center; opacity:0; transition:opacity .15s; }
+    .ref-card:hover .select-box,.ref-card.selected .select-box { opacity:1; }
+    .ref-card.selected .select-box { background:var(--accent); border-color:var(--accent); color:#0c1727; }
+    .ref-card.selected .select-box::after { content:"✓"; font-size:13px; font-weight:900; }
+
+    .workspace { --sidebar-width:248px; --dock-width:0px; display:grid; grid-template-columns:var(--sidebar-width) minmax(0,1fr); height:100vh; background:var(--bg); transition:grid-template-columns .24s cubic-bezier(.2,.8,.2,1); }
+    .workspace.sidebar-closed { --sidebar-width:0px; }
+    .workspace.inspector-docked-layout { --dock-width:376px; }
+    .library-sidebar { position:relative; z-index:50; min-width:0; height:100vh; display:flex; flex-direction:column; overflow:hidden; padding:18px 12px 12px; border-right:1px solid var(--line); background:linear-gradient(180deg,color-mix(in srgb,var(--panel) 96%,var(--bg)),color-mix(in srgb,var(--panel) 88%,var(--bg))); box-shadow:inset -1px 0 rgba(255,255,255,.025); opacity:1; visibility:visible; transform:translateX(0); transition:opacity .18s ease,visibility .18s ease,transform .24s cubic-bezier(.2,.8,.2,1); }
+    .workspace.sidebar-closed .library-sidebar { overflow:hidden; opacity:0; visibility:hidden; transform:translateX(-18px); }
+    .library-sidebar nav { min-height:0; display:flex; flex:1; flex-direction:column; }
+    .sidebar-brand { height:34px; display:flex; align-items:center; margin:-4px 0 14px; padding:0 8px 0 42px; }
+    .sidebar-brand-copy { min-width:0; display:flex; align-items:center; }
+    .sidebar-brand-copy strong { font-size:14px; line-height:1; letter-spacing:-.015em; }
+    .sidebar-section { margin-top:12px; }
+    .sidebar-section.tags-section { min-height:0; display:flex; flex:1; flex-direction:column; }
+    .sidebar-heading { min-height:39px; display:flex; align-items:center; justify-content:space-between; padding:7px 9px 6px; color:var(--muted); font-size:10px; font-weight:780; letter-spacing:.085em; text-transform:uppercase; }
+    .sidebar-heading button { width:24px; height:24px; border:0; border-radius:7px; background:transparent; color:var(--muted); }
+    .sidebar-heading button:hover { background:var(--panel-3); color:var(--text); }
+    .sidebar-heading-title { display:flex; align-items:center; gap:7px; animation:control-swap .12s ease-out; }
+    .sidebar-heading-count { min-width:21px; padding:2px 6px; border-radius:999px; background:var(--soft); color:var(--muted); font-size:9px; font-style:normal; font-variant-numeric:tabular-nums; letter-spacing:0; text-align:center; }
+    .sidebar-selection-head { width:100%; display:flex; align-items:center; gap:4px; color:var(--text); letter-spacing:0; text-transform:none; animation:control-swap .12s ease-out; }
+    .sidebar-selection-head strong { min-width:0; flex:1; font-size:10px; }
+    .sidebar-selection-head button { width:auto; min-width:24px; padding:0 6px; font-size:10px; }
+    .sidebar-selection-head .danger { color:var(--danger); }
+    @keyframes control-swap { from{opacity:.45;transform:scale(.985)} to{opacity:1;transform:scale(1)} }
+    .sidebar-item { width:100%; min-height:38px; display:grid; grid-template-columns:20px minmax(0,1fr) auto; align-items:center; gap:8px; padding:7px 10px; border:1px solid transparent; border-radius:10px; background:transparent; color:var(--muted); text-align:left; transition:background .14s ease,color .14s ease,border-color .14s ease,transform .14s ease; }
+    .sidebar-item:hover { background:var(--soft); color:var(--text); }
+    .sidebar-item:active { transform:scale(.985); }
+    .sidebar-item.active { border-color:color-mix(in srgb,var(--accent) 20%,transparent); background:color-mix(in srgb,var(--accent) 15%,var(--soft)); color:var(--text); }
+    .sidebar-item > span:nth-child(2) { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
+    .sidebar-item em { color:var(--muted); font-size:10px; font-style:normal; font-variant-numeric:tabular-nums; }
+    .sidebar-icon { width:20px; height:20px; display:grid; place-items:center; border-radius:6px; color:currentColor; font-size:12px; }
+    .sidebar-item.active .sidebar-icon { background:color-mix(in srgb,var(--accent) 19%,transparent); color:var(--accent); }
+    .tag-dot { width:8px; height:8px; margin-left:3px; border-radius:50%; background:var(--tag-color,#8f91a0); }
+    .sidebar-more { display:block; padding:7px 12px; color:var(--muted); font-size:11px; }
+    .sidebar-backdrop { display:none; }
+    .sidebar-tag-search { position:relative; margin:0 4px 7px; }
+    .sidebar-tag-search span { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--muted); font-size:12px; }
+    .sidebar-tag-search input { width:100%; height:34px; padding:0 10px 0 29px; border:1px solid var(--line); border-radius:9px; background:var(--soft); outline:0; font-size:11px; }
+    .sidebar-tag-search input:focus { border-color:color-mix(in srgb,var(--accent) 55%,var(--line)); background:var(--panel-2); }
+    .sidebar-tag-list { min-height:88px; overflow-y:auto; padding:0 2px 6px 0; overscroll-behavior:contain; scrollbar-width:thin; }
+    .sidebar-tag-item { display:grid; grid-template-columns:15px 18px minmax(0,1fr) auto 25px; align-items:center; gap:3px; min-height:34px; padding:2px 2px 2px 4px; border-radius:9px; color:var(--muted); }
+    .sidebar-tag-item:hover,.sidebar-tag-item.checked { background:var(--soft); color:var(--text); }
+    .sidebar-tag-item.drag-over { box-shadow:inset 0 2px 0 var(--accent-strong); }
+    .tag-drag-handle,.tag-more { width:100%; height:26px; display:grid; place-items:center; padding:0; border:0; border-radius:7px; background:transparent; color:var(--muted); opacity:0; }
+    .tag-drag-handle { cursor:grab; font-size:11px; }
+    .tag-drag-handle:active { cursor:grabbing; }
+    .tag-more { font-size:12px; }
+    .sidebar-tag-item:hover .tag-drag-handle,.sidebar-tag-item:hover .tag-more,.sidebar-tag-item.checked .tag-more { opacity:1; }
+    .tag-more:hover,.tag-drag-handle:hover { background:var(--panel-3); color:var(--text); }
+    .tag-check { display:grid; place-items:center; }
+    .tag-check input { appearance:none; width:15px; height:15px; margin:0; border:1px solid color-mix(in srgb,var(--muted) 60%,transparent); border-radius:4px; background:transparent; opacity:0; }
+    .sidebar-tag-item:hover .tag-check input,.tag-check input:checked,.tag-check input:focus-visible { opacity:1; }
+    .tag-check input:checked { border-color:var(--accent-strong); background:var(--accent-strong); }
+    .tag-check input:checked::after { content:"✓"; display:block; color:#091425; font-size:10px; font-weight:900; line-height:13px; text-align:center; }
+    .sidebar-tag-filter { min-width:0; display:flex; align-items:center; gap:7px; padding:6px 2px; border:0; background:transparent; color:inherit; text-align:left; }
+    .sidebar-tag-filter span:last-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; }
+    .sidebar-tag-item.active .sidebar-tag-filter { color:var(--text); font-weight:680; }
+    .sidebar-tag-count { color:var(--muted); font-size:9px; font-style:normal; font-variant-numeric:tabular-nums; }
+    .sidebar-manage-card { margin:7px 4px; padding:9px; border:1px solid var(--line); border-radius:11px; background:var(--panel-2); box-shadow:0 12px 34px rgba(0,0,0,.18); }
+    .sidebar-manage-card header { display:flex; align-items:center; gap:7px; margin-bottom:8px; }
+    .sidebar-manage-card header strong { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; }
+    .sidebar-manage-card header button { width:24px; height:24px; border:0; border-radius:6px; background:transparent; color:var(--muted); }
+    .tag-manage-actions { display:grid; gap:3px; }
+    .tag-manage-actions button { min-height:31px; display:flex; align-items:center; gap:8px; padding:5px 7px; border:0; border-radius:7px; background:transparent; text-align:left; font-size:11px; }
+    .tag-manage-actions button:hover { background:var(--panel-3); }
+    .tag-manage-actions .danger { color:var(--danger); }
+    .tag-editor-input { width:100%; height:34px; padding:0 9px; border:1px solid var(--line); border-radius:8px; background:var(--soft); font-size:11px; }
+    .tag-editor-copy { margin:0 0 9px; color:var(--muted); font-size:10px; line-height:1.45; }
+    .tag-editor-footer { display:flex; justify-content:flex-end; gap:6px; margin-top:9px; }
+    .tag-editor-footer button { min-height:30px; padding:5px 9px; border:1px solid var(--line); border-radius:8px; background:var(--soft); font-size:10px; }
+    .tag-editor-footer .danger { color:#fff; border-color:transparent; background:var(--danger); }
+    .color-swatches { display:flex; flex-wrap:wrap; gap:7px; }
+    .color-swatch { width:25px; height:25px; border:2px solid transparent; border-radius:50%; background:var(--swatch); box-shadow:inset 0 0 0 1px rgba(255,255,255,.25); }
+    .color-swatch.active { border-color:var(--text); box-shadow:0 0 0 2px var(--panel-2),0 0 0 4px var(--accent-strong); }
+    .sidebar-footer { display:grid; gap:2px; margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
+    .sidebar-footer-button { width:100%; min-height:38px; display:flex; align-items:center; gap:8px; padding:5px 8px; border:0; border-radius:8px; background:transparent; color:var(--muted); text-align:left; transition:background .14s ease,color .14s ease; }
+    .sidebar-footer-button:hover { background:var(--soft); color:var(--text); }
+    .sidebar-footer-button > span:first-child { width:24px; height:24px; display:grid; place-items:center; flex:0 0 auto; color:var(--muted); }
+    .sidebar-footer-button.donation > span:first-child { color:#c99348; }
+    .sidebar-footer-button strong { display:block; font-size:10px; }
+    .sidebar-footer-button small { display:block; margin-top:1px; color:var(--muted); font-size:9px; }
+
+    .contact { min-width:0; height:100vh; overflow-y:auto; padding:0 30px 120px; background:var(--bg); transition:padding-right .2s ease; }
+    .contact.inspector-docked { padding-right:392px; }
+    .anchored-topbar { position:fixed; z-index:75; inset:0; height:0; pointer-events:none; }
+    .anchored-topbar > * { pointer-events:auto; }
+    .contact-header { position:sticky; z-index:40; top:0; margin:0 auto 14px; max-width:1440px; padding:14px 0 9px; border-bottom:1px solid var(--line); background:color-mix(in srgb,var(--bg) 84%,transparent); backdrop-filter:blur(24px) saturate(1.18); }
+    .topbar-primary { min-height:42px; }
+    .anchored-topbar .search-box { position:fixed; z-index:75; top:14px; left:calc(var(--sidebar-width) + (100vw - var(--sidebar-width) - var(--dock-width))/2); width:min(680px,calc(100vw - var(--sidebar-width) - var(--dock-width) - 112px)); transform:translateX(-50%); transition:left .24s cubic-bezier(.2,.8,.2,1),width .24s cubic-bezier(.2,.8,.2,1); }
+    .sidebar-toggle { position:fixed; z-index:90; top:14px; left:12px; width:34px; height:34px; border:1px solid transparent; border-radius:9px; color:var(--muted); background:transparent; box-shadow:none; transition:background .14s ease,color .14s ease,border-color .14s ease; }
+    .sidebar-toggle:hover,.sidebar-toggle:focus-visible { color:var(--text); background:var(--soft); }
+    .workspace:not(.sidebar-closed) .sidebar-toggle { color:var(--accent-strong); border-color:color-mix(in srgb,var(--accent-strong) 46%,transparent); background:color-mix(in srgb,var(--accent) 13%,transparent); }
+    .sidebar-toggle-icon { width:17px; height:17px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.5; }
+    .control-tooltip { position:absolute; top:calc(100% + 7px); left:0; width:max-content; max-width:180px; padding:6px 8px; border:1px solid var(--line); border-radius:7px; background:var(--panel); box-shadow:0 10px 24px rgba(0,0,0,.22); color:var(--text); font-size:10px; font-weight:600; opacity:0; pointer-events:none; transform:translateY(-3px); transition:opacity .12s ease,transform .12s ease; }
+    .sidebar-toggle:hover .control-tooltip,.sidebar-toggle:focus-visible .control-tooltip { opacity:1; transform:translateY(0); }
+    .gallery-toolbar { min-height:45px; display:flex; align-items:center; gap:12px; padding-top:8px; color:var(--muted); }
+    .gallery-context { min-width:0; display:flex; align-items:center; gap:9px; font-size:11px; }
+    .gallery-context strong { color:var(--text); font-size:12px; white-space:nowrap; }
+    .gallery-controls { margin-left:auto; display:flex; align-items:center; gap:8px; }
+    .compact-sort { min-height:32px; display:inline-flex; align-items:center; gap:6px; padding:5px 9px; border:1px solid transparent; border-radius:9px; background:transparent; color:var(--muted); font-size:10px; white-space:nowrap; }
+    .compact-sort:hover { background:var(--soft); color:var(--text); }
+    .active-filter { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:5px 8px; border-radius:999px; background:var(--soft); color:var(--muted); font-size:10px; }
+    .layout-switcher { display:flex; align-items:center; gap:2px; padding:3px; border:1px solid var(--line); border-radius:11px; background:var(--soft); }
+    .layout-option { min-height:30px; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:5px 8px; border:0; border-radius:8px; background:transparent; color:var(--muted); font-size:10px; white-space:nowrap; transition:background .14s ease,color .14s ease,box-shadow .14s ease; }
+    .layout-option:hover { color:var(--text); background:color-mix(in srgb,var(--panel-3) 72%,transparent); }
+    .layout-option.active { color:var(--text); background:var(--panel-2); box-shadow:0 1px 1px rgba(0,0,0,.14),inset 0 0 0 1px color-mix(in srgb,var(--text) 8%,transparent); }
+    .layout-option svg { width:14px; height:14px; flex:0 0 auto; fill:none; stroke:currentColor; stroke-width:1.5; }
+    .contact-sheet { max-width:1440px; margin:0 auto; animation:gallery-enter .18s ease-out; }
+    .contact-sheet.mode-waterfall { columns:6 175px; column-gap:12px; }
+    .contact-sheet.mode-masonry { display:grid; grid-template-columns:repeat(auto-fill,minmax(168px,1fr)); grid-auto-flow:row dense; grid-auto-rows:6px; gap:12px; }
+    .contact-sheet.mode-masonry .ref-card { grid-row:span var(--masonry-span,13); height:100%; margin-bottom:0; overflow:hidden; border-radius:12px; }
+    .contact-sheet.mode-masonry .card-art { height:100%; aspect-ratio:auto; }
+    @keyframes gallery-enter { from{opacity:.72;transform:translateY(3px)} to{opacity:1;transform:none} }
+
+    .selection-tools { position:fixed; z-index:70; bottom:18px; width:min(500px,calc(100vw - 28px)); padding:7px; border:1px solid var(--line); border-radius:16px; background:color-mix(in srgb,var(--panel-2) 95%,transparent); box-shadow:var(--shadow); backdrop-filter:blur(20px); transition:left .16s ease,right .16s ease,transform .16s ease; }
+    .selection-tools.bottom-center { left:50%; transform:translateX(-50%); }
+    .selection-tools.bottom-left { left:18px; transform:none; }
+    .selection-tools.bottom-right { right:18px; transform:none; }
+    .selection-tools.dragging { transition:none; }
+    .selection-tools-row { display:flex; align-items:center; gap:6px; }
+    .selection-tools-row strong { padding:0 5px; font-size:12px; white-space:nowrap; }
+    .selection-tools-row .spacer,.panel-titlebar .spacer { flex:1; }
+    .selection-tools .quiet-button { min-height:40px; padding:7px 11px; }
+    .toolbar-toast { position:absolute; left:50%; bottom:calc(100% + 8px); transform:translateX(-50%); padding:7px 10px; border:1px solid var(--line); border-radius:9px; background:var(--panel); box-shadow:var(--shadow); color:var(--muted); font-size:11px; white-space:nowrap; }
+    .tag-picker-scrim { position:fixed; z-index:88; inset:0; border:0; background:transparent; cursor:default; }
+    .toolbar-popover { border:1px solid var(--line); border-radius:14px; background:color-mix(in srgb,var(--panel) 98%,transparent); box-shadow:var(--shadow); backdrop-filter:blur(20px); }
+    .tag-picker { position:fixed; z-index:89; top:72px; left:50%; width:min(340px,calc(100vw - 28px)); max-height:min(440px,calc(100dvh - 24px)); padding:9px; overflow:hidden; transform:translateX(-50%); animation:popover-in .14s ease-out; }
+    @keyframes popover-in { from{opacity:0;transform:scale(.985)} to{opacity:1;transform:scale(1)} }
+    .tag-picker-head { display:flex; align-items:center; justify-content:space-between; min-height:36px; padding:0 1px 7px; cursor:grab; touch-action:none; user-select:none; }
+    .tag-picker-head:active { cursor:grabbing; }
+    .tag-picker-head .icon-button { width:28px; height:28px; border:0; border-radius:7px; background:transparent; }
+    .tag-picker input { width:100%; height:34px; padding:0 10px; border:1px solid var(--line); border-radius:9px; background:var(--soft); font-size:11px; }
+    .tag-picker-status { min-width:0; display:flex; align-items:center; gap:7px; min-height:30px; margin-top:6px; padding:4px 6px; border-radius:8px; background:color-mix(in srgb,var(--accent) 8%,var(--soft)); overflow:hidden; }
+    .tag-picker-status strong { max-width:58%; flex:0 1 auto; overflow:hidden; color:var(--accent-strong); font-size:9px; letter-spacing:.03em; text-overflow:ellipsis; white-space:nowrap; }
+    .tag-picker-status-tags { min-width:0; display:flex; align-items:center; gap:4px; overflow-x:auto; scrollbar-width:none; }
+    .tag-picker-status-tags::-webkit-scrollbar { display:none; }
+    .tag-picker-status-tags span { flex:0 0 auto; padding:3px 6px; border:1px solid var(--line); border-radius:999px; background:var(--panel-2); color:var(--muted); font-size:9px; }
+    .tag-picker-list { max-height:min(220px,calc(100dvh - 210px)); overflow-y:auto; margin-top:6px; }
+    .tag-section-label { padding:8px 8px 5px; color:var(--muted); font-size:10px; font-weight:750; letter-spacing:.07em; text-transform:uppercase; }
+    .tag-option { display:grid; grid-template-columns:10px 1fr auto; align-items:center; gap:9px; min-height:36px; padding:7px 8px; }
+    .tag-option small { color:var(--muted); }
+    .tag-option.applied { color:var(--muted); background:color-mix(in srgb,var(--accent) 7%,transparent); cursor:default; }
+    .tag-option.applied small { color:var(--accent-strong); }
+    .tag-picker-footer { display:flex; justify-content:flex-end; padding-top:7px; border-top:1px solid var(--line); }
+    .tag-picker-footer .quiet-button { min-height:29px; padding:4px 10px; border-radius:8px; font-size:10px; }
+    .toolbar-menu { right:0; width:230px; padding:7px; }
+    .toolbar-menu .menu-label { padding:7px 9px 5px; color:var(--muted); font-size:10px; font-weight:750; letter-spacing:.07em; text-transform:uppercase; }
+    .menu-item { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 10px; }
+    .menu-item.active::after { content:"✓"; color:var(--accent-strong); font-weight:900; }
+
+    .inspector-panel { z-index:55; border:1px solid var(--line); background:color-mix(in srgb,var(--panel) 97%,transparent); box-shadow:var(--shadow); backdrop-filter:blur(22px); overflow:hidden; }
+    .inspector-panel.floating { position:fixed; right:18px; bottom:92px; width:min(350px,calc(100vw - 28px)); border-radius:17px; }
+    .inspector-panel.docked { position:fixed; top:14px; right:14px; bottom:14px; width:350px; border-radius:18px; }
+    .inspector-panel.dragging { opacity:.96; }
+    .panel-titlebar { display:flex; align-items:center; gap:6px; min-height:48px; padding:7px 9px 7px 12px; border-bottom:1px solid var(--line); }
+    .panel-titlebar.draggable-titlebar { cursor:grab; touch-action:none; user-select:none; }
+    .panel-titlebar.draggable-titlebar:active { cursor:grabbing; }
+    .panel-titlebar.draggable-titlebar button,.tag-picker-head button { cursor:pointer; }
+    .panel-heading { min-width:0; display:flex; align-items:baseline; gap:7px; }
+    .panel-heading strong { color:var(--muted); font-size:11px; font-weight:650; }
+    .panel-heading small { color:color-mix(in srgb,var(--muted) 78%,transparent); font-size:9px; }
+    .panel-toolbar-button { width:30px; height:30px; display:grid; place-items:center; padding:0; border:0; border-radius:8px; background:transparent; color:var(--muted); }
+    .panel-toolbar-button:hover { background:var(--soft); color:var(--text); }
+    .panel-toolbar-button svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.5; }
+    .inspector-body { max-height:calc(100vh - 66px); overflow-y:auto; padding:12px; }
+    .inspector-panel.floating .inspector-body { max-height:min(680px,calc(100vh - 120px)); }
+    .inspector-panel.docked .inspector-body { max-height:calc(100vh - 76px); }
+    .inspector-summary { display:grid; grid-template-columns:72px minmax(0,1fr); gap:12px; align-items:center; }
+    .inspector-summary .summary-art { width:72px; height:72px; border-radius:10px; }
+    .inspector-summary h2 { margin:4px 0 7px; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .inspector-actions { display:flex; justify-content:flex-end; align-items:center; min-height:28px; margin-top:5px; padding-top:4px; border-top:1px solid var(--line); }
+    .inspector-clear { min-height:23px; padding:2px 6px; border:0; border-radius:6px; background:transparent; color:var(--muted); font-size:9px; }
+    .inspector-clear:hover { background:var(--panel-3); color:var(--text); }
+    .inspector-empty { min-height:calc(100vh - 52px); display:grid; place-content:center; justify-items:center; padding:28px; text-align:center; }
+    .inspector-panel.docked .inspector-empty { min-height:calc(100vh - 76px); }
+    .inspector-empty-icon { width:48px; height:48px; display:grid; place-items:center; margin-bottom:12px; border:1px dashed color-mix(in srgb,var(--muted) 55%,transparent); border-radius:15px; color:var(--muted); font-size:20px; }
+    .inspector-empty strong { font-size:13px; }
+    .inspector-empty p { max-width:220px; margin:6px 0 0; color:var(--muted); font-size:10px; line-height:1.5; }
+    .stacked-thumbnails { position:relative; width:88px; height:76px; flex:0 0 88px; }
+    .stacked-thumbnails .stack-art { position:absolute; width:60px; height:68px; top:4px; left:4px; border:2px solid var(--panel); border-radius:10px; box-shadow:0 8px 22px rgba(0,0,0,.22); }
+    .stacked-thumbnails .stack-art:nth-child(2) { left:16px; transform:rotate(3deg); }
+    .stacked-thumbnails .stack-art:nth-child(3) { left:28px; transform:rotate(6deg); }
+    .selection-overview { display:flex; align-items:center; gap:12px; }
+    .selection-overview > .summary-art { width:72px; height:72px; border-radius:10px; flex:0 0 72px; }
+    .selection-overview-copy { min-width:0; }
+    .selection-overview-copy h2 { margin:4px 0 3px; font-size:16px; }
+    .selection-overview-copy p { margin:0; color:var(--muted); font-size:11px; }
+    .editable-tag-row { display:flex; flex-wrap:wrap; gap:6px; margin-top:7px; }
+    .editable-tag { display:inline-flex; align-items:center; gap:5px; padding:5px 6px 5px 9px; border:1px solid var(--line); border-radius:999px; background:var(--soft); font-size:11px; }
+    .editable-tag button { width:20px; height:20px; padding:0; border:0; border-radius:50%; background:transparent; color:var(--muted); }
+    .editable-tag button:hover { color:var(--text); background:var(--panel-3); }
+    .add-tag-round { width:30px; height:30px; border:1px dashed color-mix(in srgb,var(--muted) 55%,transparent); border-radius:50%; background:transparent; color:var(--muted); }
+    .selection-notes { display:grid; gap:8px; }
+    .note-tabs { display:flex; gap:7px; overflow-x:auto; padding:1px 1px 6px; overscroll-behavior-inline:contain; scrollbar-width:thin; scroll-snap-type:x proximity; }
+    .note-tab { min-width:128px; max-width:158px; padding:8px 9px; border:1px solid var(--line); border-radius:10px; background:var(--soft); text-align:left; scroll-snap-align:start; }
+    .note-tab:hover,.note-tab:focus-visible,.note-tab.active { border-color:color-mix(in srgb,var(--accent) 55%,var(--line)); background:color-mix(in srgb,var(--accent) 12%,var(--panel-2)); }
+    .note-tab strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; }
+    .note-tab span { display:-webkit-box; margin-top:3px; overflow:hidden; color:var(--muted); font-size:10px; line-height:1.35; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+    .note-full { min-height:78px; padding:9px 10px; border:1px solid var(--line); border-radius:10px; background:color-mix(in srgb,var(--panel-2) 78%,transparent); }
+    .note-full strong { display:block; margin-bottom:5px; font-size:11px; }
+    .note-editor { width:100%; min-height:132px; max-height:320px; resize:vertical; padding:10px 11px; border:1px solid var(--line); border-radius:10px; background:var(--soft); color:var(--text); font-size:12px; line-height:1.5; outline:0; }
+    .note-editor:hover { border-color:color-mix(in srgb,var(--text) 22%,var(--line)); }
+    .note-editor:focus { border-color:color-mix(in srgb,var(--accent) 62%,var(--line)); background:var(--panel-2); box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 12%,transparent); }
+    .inspector-panel.floating .note-editor { min-height:154px; }
+    .inspector-panel.docked .note-editor { min-height:168px; }
+    .note-full .note-editor { min-height:126px; border:0; border-radius:7px; background:transparent; padding:5px 2px; }
+    .note-preview { padding:8px 9px; border:1px solid var(--line); border-radius:9px; background:var(--soft); }
+    .note-preview strong { display:block; margin-bottom:3px; font-size:10px; }
+    .note-preview p { display:-webkit-box; margin:0; overflow:hidden; color:var(--muted); font-size:11px; line-height:1.4; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+    .detail-content { display:flex; flex-direction:column; gap:16px; }
+    .detail-image { width:100%; aspect-ratio:1.2; border-radius:12px; border:1px solid var(--line); }
+    .detail-section { display:flex; flex-direction:column; gap:8px; }
+    .detail-section h3 { margin:0; font-size:13px; }
+    .detail-grid { display:grid; grid-template-columns:82px 1fr; gap:9px; font-size:12px; }
+    .detail-grid dt { color:var(--muted); }
+    .detail-grid dd { margin:0; }
+    .open-source-button { align-self:flex-start; min-height:30px; display:inline-flex; align-items:center; gap:6px; padding:5px 8px; border:0; border-radius:8px; background:transparent; color:var(--muted); font-size:10px; font-weight:650; }
+    .open-source-button:hover { background:var(--soft); color:var(--text); }
+    .open-source-button span { color:var(--accent-strong); font-size:12px; }
+    .dock-preview { position:fixed; z-index:54; top:8px; right:8px; bottom:8px; width:360px; border:2px solid var(--accent-strong); border-radius:15px; background:color-mix(in srgb,var(--accent) 10%,transparent); opacity:0; pointer-events:none; transition:opacity .12s; }
+    .dock-preview.visible { opacity:1; }
+
+    @media (max-width:1180px) {
+      .anchored-topbar .search-box { width:min(600px,calc(100vw - var(--sidebar-width) - var(--dock-width) - 112px)); }
+      .contact-sheet.mode-waterfall{columns:4 170px}
+    }
+    @media (max-width:900px) {
+      body { overflow:hidden; }
+      .prototype-badge { display:none; }
+      .workspace,.workspace.sidebar-closed { display:block; height:100vh; }
+      .library-sidebar { position:fixed; z-index:80; top:0; bottom:0; left:0; width:min(280px,86vw); height:auto; border-right:1px solid var(--line); box-shadow:var(--shadow); transform:translateX(0); opacity:1; visibility:visible; transition:transform .2s ease,opacity .16s ease,visibility .16s ease; }
+      .workspace.sidebar-closed .library-sidebar { overflow:hidden; transform:translateX(-102%); opacity:0; visibility:hidden; }
+      .workspace:not(.sidebar-closed) .sidebar-backdrop { display:block; position:fixed; z-index:79; inset:0; border:0; background:rgba(4,6,8,.58); backdrop-filter:blur(2px); }
+      .contact,.contact.inspector-docked { min-height:0; height:100vh; overflow-y:auto; padding:0 14px 120px; }
+      .contact-header { padding-top:10px; }
+      .workspace,.workspace.sidebar-closed,.workspace.inspector-docked-layout { --sidebar-width:0px; --dock-width:0px; }
+      .anchored-topbar .search-box { z-index:45; top:10px; left:58px; right:14px; width:auto; transform:none; }
+      .sidebar-toggle { top:14px; left:12px; }
+      .sidebar-brand { padding-left:42px; }
+      .gallery-toolbar { overflow-x:auto; scrollbar-width:none; }
+      .gallery-toolbar::-webkit-scrollbar { display:none; }
+      .gallery-context { flex:0 0 auto; }
+      .gallery-controls { flex:0 0 auto; }
+      .contact-sheet.mode-waterfall { columns:3 160px; }
+      .contact-sheet.mode-masonry { grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); }
+      .tag-picker { width:min(420px,calc(100vw - 24px)); }
+      .inspector-panel.floating,.inspector-panel.docked { position:fixed; z-index:60; left:8px; right:8px; top:auto; bottom:8px; width:auto; max-height:min(66dvh,560px); border:1px solid color-mix(in srgb,var(--text) 16%,var(--line)); border-radius:18px; background:color-mix(in srgb,var(--panel) 86%,transparent); box-shadow:0 24px 80px rgba(0,0,0,.3); backdrop-filter:blur(28px) saturate(1.18); }
+      .inspector-panel.docked { left:0; right:0; bottom:0; border-radius:18px 18px 0 0; }
+      .inspector-panel.docked.empty { max-height:132px; }
+      .inspector-panel.docked.empty .inspector-empty { min-height:78px; grid-template-columns:auto 1fr; align-items:center; justify-items:start; column-gap:12px; padding:14px 18px; text-align:left; }
+      .inspector-panel.docked.empty .inspector-empty-icon { width:38px; height:38px; margin:0; grid-row:1/3; }
+      .inspector-panel.docked.empty .inspector-empty p { margin-top:2px; }
+      .panel-titlebar.draggable-titlebar { cursor:default; touch-action:auto; }
+      .inspector-panel .inspector-body { max-height:calc(62dvh - 58px); }
+      .dock-preview { display:none; }
+    }
+    @media (max-width:620px) {
+      .contact-sheet.mode-waterfall { columns:2 145px; }
+      .contact-sheet.mode-masonry { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+      .gallery-toolbar { gap:8px; }
+      .gallery-context strong { font-size:11px; }
+      .compact-sort { padding-inline:6px; }
+      .inspector-panel.floating,.inspector-panel.docked { max-height:68dvh; }
+    }
+    @media (prefers-reduced-motion:reduce) { *,*::before,*::after{transition-duration:.001ms!important;animation-duration:.001ms!important} }
+    .needs-attention { padding:78px 28px 40px; overflow:auto; }
+    .needs-attention header { max-width:780px; margin:0 auto 18px; }
+    .needs-attention h1 { margin:0 0 7px; font-size:22px; }
+    .needs-attention header p { margin:0; color:var(--muted); font-size:12px; line-height:1.55; }
+    .attempt-list { display:grid; gap:10px; max-width:780px; margin:auto; }
+    .attempt-card { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:14px; padding:15px; border:1px solid var(--line); border-radius:14px; background:var(--panel); }
+    .attempt-card h2 { margin:0 0 5px; font-size:14px; }
+    .attempt-card p { margin:0 0 9px; color:var(--muted); font-size:11px; line-height:1.5; }
+    .attempt-meta { display:flex; flex-wrap:wrap; gap:6px 12px; color:var(--muted); font:10px/1.4 ui-monospace,SFMono-Regular,monospace; }
+    .attempt-actions { display:flex; flex-wrap:wrap; align-content:start; justify-content:end; gap:6px; }
+    .attempt-actions button { min-height:32px; border:1px solid var(--line); border-radius:8px; padding:5px 9px; background:var(--soft); }
+  </style>
+</head>
+<body>
+  <div id="prototype-state" class="prototype-badge">Throwaway prototype</div>
+  <main id="app" class="app"></main>
+
+  <script>
+    const records = [
+      {id:"78201",art:"art-a",ratio:"4/5",title:"Silhouette study",tags:["character","fashion","studio"],note:"Interesting use of shadow and negative space. Good reference for outfit silhouette and color balance.",saved:"May 25, 2026"},
+      {id:"78202",art:"art-b",ratio:"3/4",title:"Crimson portrait",tags:["illustration","character","red"],note:"Keep the face quiet while the background carries the visual intensity.",saved:"May 24, 2026"},
+      {id:"78203",art:"art-c",ratio:"1/1",title:"Roadside styling",tags:["fashion","pose","outdoor"],note:"Useful relaxed pose and warm neutral palette.",saved:"May 23, 2026"},
+      {id:"78204",art:"art-d",ratio:"2/3",title:"Two figures in motion",tags:["fashion","two people","color"],note:"Reference the overlapping silhouettes and contrasting movement.",saved:"May 21, 2026"},
+      {id:"78205",art:"art-e",ratio:"5/6",title:"Concrete light",tags:["interior","architecture","light"],note:"Hard light creates a graphic division without additional objects.",saved:"May 18, 2026"},
+      {id:"78206",art:"art-f",ratio:"3/4",title:"Rain and neon",tags:["night","city","cinematic"],note:"Wet surface reflection gives depth without increasing scene complexity.",saved:"May 16, 2026"},
+      {id:"78207",art:"art-g",ratio:"1/1",title:"Boot detail",tags:["pose","fashion","detail"],note:"Crop creates a product-like read while retaining gesture.",saved:"May 14, 2026"},
+      {id:"78208",art:"art-h",ratio:"2/3",title:"High angle portrait",tags:["portrait","angle","lighting"],note:"The overhead framing compresses the environment into shape.",saved:"May 12, 2026"},
+      {id:"78209",art:"art-i",ratio:"5/7",title:"Low-key profile",tags:["illustration","character","night"],note:"Narrow value range with one controlled highlight.",saved:"May 10, 2026"},
+      {id:"78210",art:"art-j",ratio:"4/5",title:"Soft portrait",tags:["hair","portrait","mood"],note:"Muted color and low contrast keep attention on the expression.",saved:"May 8, 2026"},
+      {id:"78211",art:"art-k",ratio:"1/1",title:"Window study",tags:["interior","window","city"],note:"Simple frame-within-frame composition for environmental storytelling.",saved:"May 6, 2026"},
+      {id:"78212",art:"art-l",ratio:"3/4",title:"Red still life",tags:["red","product","still life"],note:"Single hue carries the whole composition; texture separates the forms.",saved:"May 4, 2026"}
+    ];
+    const captureAttempts = [
+      {attemptId:"cap-feed-timeout",pinId:"991001",originTabId:41,state:"save-not-confirmed",surface:"feed",evidence:"confirmation-timeout",confidence:"Reliable timeout; outcome unavailable"},
+      {attemptId:"cap-local-failed",pinId:"991002",originTabId:57,state:"local-write-failed",surface:"pin-detail",evidence:"simulated-local-write-failure",confidence:"Reliable"}
+    ];
+    const tagColors={character:"#9586c8",fashion:"#b69aac",studio:"#91a2b6",illustration:"#7f93bd",red:"#c66470",pose:"#9b93aa",outdoor:"#a7a68b","two people":"#b7a66c",color:"#b08299",interior:"#7193a0",architecture:"#8a9ca0",light:"#aaa88e",night:"#6d7fa9",city:"#6c9ca5",cinematic:"#9287a7",detail:"#a79f91",portrait:"#8e8ba5",angle:"#959aaf",lighting:"#b6919c",hair:"#8ca0b7",mood:"#a498a6",window:"#8fa7a0",product:"#a78a94","still life":"#a99d8a"};
+    const tagCatalog=[{tag:"fashion",count:214},{tag:"character",count:186},{tag:"pose",count:142},{tag:"lighting",count:128},{tag:"night",count:97},{tag:"cinematic",count:96},{tag:"architecture",count:83},{tag:"interior",count:71},{tag:"color",count:64},{tag:"red",count:58},{tag:"two people",count:52},{tag:"hair",count:49},{tag:"illustration",count:45},{tag:"product",count:38}];
+    const tagPalette=["#b69aac","#9586c8","#6d7fa9","#7193a0","#8fa780","#b7a66c","#c98262","#c66470"];
+    const compactMedia=matchMedia("(max-width: 900px)");
+    const state={destination:"Library",query:"",filter:"All",selected:new Set(),activeId:"78201",activeNoteId:"78201",sortRecent:true,galleryMode:"waterfall",theme:matchMedia("(prefers-color-scheme: light)").matches?"light":"dark",searchOpen:false,tagPickerOpen:false,tagQuery:"",tagPickerPosition:null,lastAction:"",inspectorMode:"closed",inspectorPosition:null,sidebarOpen:!compactMedia.matches,sidebarTagQuery:"",selectedSidebarTags:new Set(),lastSidebarTagIndex:null,sidebarTagMenu:null,sidebarTagEditor:null};
+    const esc=value=>String(value).replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
+    const compact=()=>compactMedia.matches;
+    const activeRecord=()=>records.find(record=>record.id===state.activeId)||records[0];
+    const selectedRecords=()=>records.filter(record=>state.selected.has(record.id));
+    const contextRecords=()=>selectedRecords();
+    function intersectionTags(items){return items.length?items[0].tags.filter(tag=>items.every(item=>item.tags.includes(tag))):[];}
+    function filteredRecords(){const q=state.query.trim().toLowerCase();const list=records.filter(r=>{const haystack=[r.title,r.note,...r.tags].join(" ").toLowerCase();return(!q||q.split(/\s+/).every(token=>haystack.includes(token)))&&(state.filter==="All"||r.tags.includes(state.filter));});return state.sortRecent?list:[...list].reverse();}
+    function tagHTML(tag){return `<span class="tag" style="--tag-color:${tagColors[tag]||"#8f91a0"}">${esc(tag)}</span>`;}
+    function artHTML(record,className=""){return `<div class="art ${record.art} ${className}" style="--ratio:${record.ratio}" role="img" aria-label="Abstract placeholder for ${esc(record.title)}"></div>`;}
+    function masonrySpan(ratio){const [width,height]=ratio.split("/").map(Number);return Math.max(10,Math.round(((180*height/width)+12)/18));}
+    function cardHTML(record){const selected=state.selected.has(record.id)?" selected":"";return `<article class="ref-card${selected}" style="--card-ratio:${record.ratio};--masonry-span:${masonrySpan(record.ratio)}" data-id="${record.id}" tabindex="0" aria-label="${esc(record.title)}"><button class="select-box" data-select="${record.id}" aria-label="Toggle selection for ${esc(record.title)}"></button>${artHTML(record,"card-art")}</article>`;}
+    function detailHTML(record){return `<div class="detail-content">${artHTML(record,"detail-image")}<div><div class="eyebrow">Reference available</div><h2 style="margin:6px 0 4px;font-size:19px">${esc(record.title)}</h2><span class="muted" style="font-size:12px">pinterest.com/pin/${record.id}</span></div><div class="divider"></div><section class="detail-section"><h3>Note</h3>${noteEditorHTML(record)}</section>${editableTagsHTML([record])}<div class="divider"></div><dl class="detail-grid"><dt>Added to PinRef</dt><dd>${esc(record.saved)}</dd><dt>PinRef Library</dt><dd><span style="color:#72d39d">●</span> In PinRef</dd><dt>Pinterest Link</dt><dd>Status unknown</dd></dl><button class="open-source-button">Open on Pinterest <span aria-hidden="true">↗</span></button></div>`;}
+    function searchHTML(){const counts=[...new Set(records.flatMap(r=>r.tags))].map(tag=>({tag,count:records.filter(r=>r.tags.includes(tag)).length})).sort((a,b)=>b.count-a.count||a.tag.localeCompare(b.tag));const visible=state.query?counts.filter(item=>item.tag.includes(state.query.toLowerCase())):counts;const popover=state.searchOpen?`<div class="search-suggestions"><div class="suggestion-heading"><strong>Suggested tags</strong><span>Search committed tags and notes</span></div>${visible.map(item=>`<button class="suggestion-item" data-search-tag="${esc(item.tag)}"><i style="--item-color:${tagColors[item.tag]||"#8f91a0"}"></i><span>${esc(item.tag)}</span><small>${item.count} refs</small></button>`).join("")||`<div class="suggestion-heading"><span>No matching tags</span></div>`}</div>`:"";return `<div class="search-box"><span>⌕</span><input id="search" name="reference-search" value="${esc(state.query)}" placeholder="Search committed tags and notes…" aria-label="Search references" autocomplete="off"><kbd>⌘ K</kbd>${popover}</div>`;}
+    function filteredSidebarTags(){const q=state.sidebarTagQuery.trim().toLowerCase();return tagCatalog.filter(item=>!q||item.tag.includes(q));}
+    function sidebarManagerHTML(){const editor=state.sidebarTagEditor;if(editor){const tags=editor.tags||[],label=tags.length===1?tags[0]:`${tags.length} tags`;if(editor.mode==="rename")return `<div class="sidebar-manage-card" role="dialog" aria-label="Rename ${esc(label)}"><header><strong>Rename ${esc(label)}</strong><button data-close-tag-manager aria-label="Close">×</button></header><input class="tag-editor-input" id="tag-rename-input" name="tag-name" autocomplete="off" value="${esc(tags[0])}" aria-label="New tag name"><div class="tag-editor-footer"><button data-close-tag-manager>Cancel</button><button data-save-tag-name>Save</button></div></div>`;if(editor.mode==="color")return `<div class="sidebar-manage-card" role="dialog" aria-label="Change ${esc(label)} color"><header><strong>Marker color</strong><button data-close-tag-manager aria-label="Close">×</button></header><div class="color-swatches">${tagPalette.map(color=>`<button class="color-swatch${tagColors[tags[0]]===color?" active":""}" style="--swatch:${color}" data-set-tag-color="${color}" aria-label="Use ${color}"></button>`).join("")}</div></div>`;return `<div class="sidebar-manage-card" role="alertdialog" aria-label="Remove ${esc(label)}"><header><strong>Remove ${esc(label)}?</strong><button data-close-tag-manager aria-label="Close">×</button></header><p class="tag-editor-copy">This removes ${tags.length===1?"the tag":"these tags"} from the sidebar and every saved Pin. This prototype cannot undo it.</p><div class="tag-editor-footer"><button data-close-tag-manager>Cancel</button><button class="danger" data-remove-sidebar-tags>Remove</button></div></div>`;}if(state.sidebarTagMenu)return `<div class="sidebar-manage-card"><header><span class="tag-dot" style="--tag-color:${tagColors[state.sidebarTagMenu]||"#8f91a0"}"></span><strong>${esc(state.sidebarTagMenu)}</strong><button data-close-tag-manager aria-label="Close">×</button></header><div class="tag-manage-actions"><button data-edit-sidebar-tag="rename">✎ Rename</button><button data-edit-sidebar-tag="color">● Marker color</button><button class="danger" data-edit-sidebar-tag="delete">⌫ Remove tag</button></div></div>`;return"";}
+    function sidebarHTML(){const tags=filteredSidebarTags();const item=(icon,label,count,filter,active=state.filter===filter&&state.destination==="Library")=>`<button class="sidebar-item${active?" active":""}" data-sidebar-filter="${esc(filter)}"><span class="sidebar-icon">${icon}</span><span>${esc(label)}</span><em>${count}</em></button>`;const heading=state.selectedSidebarTags.size?`<div class="sidebar-selection-head"><strong>${state.selectedSidebarTags.size} selected</strong><button class="danger" data-bulk-remove-tags aria-label="Remove selected tags">⌫ Remove</button><button data-clear-sidebar-selection aria-label="Clear tag selection">×</button></div>`:`<span class="sidebar-heading-title">Tags <em class="sidebar-heading-count">${tagCatalog.length}</em></span><button aria-label="Create tag">＋</button>`;return `<aside class="library-sidebar" aria-label="Library navigation"><div class="sidebar-brand"><span class="sidebar-brand-copy"><strong>PinRef</strong></span></div><nav>${item("▣","All Pins",records.length,"All")}<button class="sidebar-item${state.destination==="Needs Attention"?" active":""}" data-destination="Needs Attention"><span class="sidebar-icon">!</span><span>Needs Attention</span><em>${captureAttempts.length}</em></button>${item("◷","Recently Added",42,"All",false)}${item("⬡","Untagged",317,"All",false)}${item("♲","Trash",12,"All",false)}<section class="sidebar-section tags-section"><div class="sidebar-heading">${heading}</div><label class="sidebar-tag-search"><span>⌕</span><input id="sidebar-tag-search" name="sidebar-tag-search" autocomplete="off" value="${esc(state.sidebarTagQuery)}" placeholder="Filter tags…" aria-label="Filter tags"></label><div class="sidebar-tag-list" aria-label="Tag list">${tags.map(({tag,count},index)=>`<div class="sidebar-tag-item${state.filter===tag?" active":""}${state.selectedSidebarTags.has(tag)?" checked":""}" draggable="true" data-sidebar-tag-row="${esc(tag)}" data-sidebar-tag-index="${index}"><button class="tag-drag-handle" aria-label="Drag ${esc(tag)} to reorder">⠿</button><label class="tag-check"><input type="checkbox" ${state.selectedSidebarTags.has(tag)?"checked":""} data-sidebar-tag-check="${esc(tag)}" aria-label="Select ${esc(tag)}"></label><button class="sidebar-tag-filter" data-sidebar-filter="${esc(tag)}"><span class="tag-dot" style="--tag-color:${tagColors[tag]||"#8f91a0"}"></span><span>${esc(tag)}</span></button><em class="sidebar-tag-count">${count}</em><button class="tag-more" data-sidebar-tag-menu="${esc(tag)}" aria-label="Manage ${esc(tag)}">•••</button></div>`).join("")||`<div class="sidebar-more">No matching tags</div>`}</div>${sidebarManagerHTML()}</section></nav><div class="sidebar-footer">${themeButton()}<button class="sidebar-footer-button donation" data-donation><span>☕</span><span><strong>Support PinRef</strong><small>Donation details coming later</small></span></button></div></aside><button class="sidebar-backdrop" data-sidebar-backdrop aria-label="Close sidebar"></button>`;}
+    function themeButton(){const next=state.theme==="light"?"dark":"light";return `<button class="sidebar-footer-button" id="theme" title="Switch to ${next} theme" aria-label="Switch to ${next} theme"><span>${state.theme==="light"?"☀":"☾"}</span><span><strong>${state.theme==="light"?"Light":"Dark"} theme</strong><small>Switch to ${next}</small></span></button>`;}
+    function layoutIcon(mode){if(mode==="waterfall")return `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5" height="8" rx="1.2"/><rect x="9" y="2" width="5" height="5" rx="1.2"/><rect x="2" y="12" width="5" height="2" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1.2"/></svg>`;return `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1.2"/><rect x="9" y="2" width="5" height="8" rx="1.2"/><rect x="2" y="9" width="5" height="5" rx="1.2"/><rect x="9" y="12" width="5" height="2" rx="1"/></svg>`;}
+    function galleryControlsHTML(){const modes=[{id:"masonry",label:"Masonry",hint:"Dense row-first packing"},{id:"waterfall",label:"Waterfall",hint:"Balanced vertical columns"}];return `<div class="layout-switcher" role="group" aria-label="Gallery layout">${modes.map(mode=>`<button class="layout-option${state.galleryMode===mode.id?" active":""}" data-gallery-mode="${mode.id}" aria-pressed="${state.galleryMode===mode.id}" title="${mode.hint}">${layoutIcon(mode.id)}<span class="layout-label">${mode.label}</span></button>`).join("")}</div>`;}
+    function tagPickerHTML(){if(!state.tagPickerOpen)return"";const all=[...new Set(records.flatMap(r=>r.tags))];const applied=intersectionTags(contextRecords());const query=state.tagQuery.trim().toLowerCase();const matches=all.filter(tag=>tag.includes(query)).slice(0,12);const canCreate=query&&!all.includes(query);const status=state.lastAction||`${applied.length} tag${applied.length===1?"":"s"} applied`;return `<button class="tag-picker-scrim" data-close-tag-picker aria-label="Close tag picker"></button><div class="toolbar-popover tag-picker" role="dialog" aria-modal="false" aria-label="Add tags"><div class="tag-picker-head" data-drag-handle="tag-picker"><div><strong style="font-size:12px">Add tags</strong><div class="muted" style="font-size:9px;margin-top:1px">Drag this title bar to move</div></div><button class="icon-button" data-close-tag-picker aria-label="Close tag picker">×</button></div><input id="tag-picker-search" name="tag-search" autocomplete="off" role="combobox" aria-label="Search or create a tag" aria-expanded="true" aria-controls="tag-options" aria-autocomplete="list" value="${esc(state.tagQuery)}" placeholder="Search or create…"><div class="tag-picker-status" aria-live="polite"><strong>${esc(status)}</strong><div class="tag-picker-status-tags">${applied.map(tag=>`<span>${esc(tag)}</span>`).join("")||`<span>No shared tags yet</span>`}</div></div><div id="tag-options" class="tag-picker-list" role="listbox"><div class="tag-section-label">${query?"Matches":"Recommended"}</div>${matches.map(tag=>{const isApplied=applied.includes(tag);return `<button class="tag-option${isApplied?" applied":""}" role="option" aria-selected="${isApplied}" ${isApplied?"disabled":""} data-apply-tag="${esc(tag)}"><i style="--item-color:${tagColors[tag]||"#8f91a0"}"></i><span>${esc(tag)}</span><small>${isApplied?"✓ Added":`${records.filter(r=>r.tags.includes(tag)).length} refs`}</small></button>`;}).join("")}${canCreate?`<button class="tag-option" role="option" data-create-tag="${esc(query)}"><i style="--item-color:${tagColors[query]||"#8f91a0"}"></i><span>Create “${esc(state.tagQuery.trim())}”</span><small>New tag</small></button>`:""}</div><div class="tag-picker-footer"><button class="quiet-button primary" data-close-tag-picker>Done</button></div></div>`;}
+    function contextVisualHTML(items){if(items.length===1)return artHTML(items[0],"summary-art");return `<div class="stacked-thumbnails" aria-label="${items.length} selected reference thumbnails">${items.slice(0,3).map(item=>artHTML(item,"stack-art")).join("")}</div>`;}
+    function editableTagsHTML(items){const common=intersectionTags(items);return `<section class="detail-section"><h3>${items.length>1?"Shared tags":"Tags"}</h3><div class="editable-tag-row">${common.map(tag=>`<span class="editable-tag">${esc(tag)}<button data-remove-common-tag="${esc(tag)}" aria-label="Remove ${esc(tag)} tag">×</button></span>`).join("")||`<span class="muted" style="font-size:11px">No shared tags</span>`}<button class="add-tag-round" data-toggle-tag-picker aria-label="Add tag">＋</button></div></section>`;}
+    function noteEditorHTML(record){return `<textarea class="note-editor" name="note-${record.id}" data-note-editor="${record.id}" aria-label="Edit note for ${esc(record.title)}" placeholder="Add a note…">${esc(record.note)}</textarea>`;}
+    function notePreviewHTML(items){const notes=items;if(items.length===1)return `<section class="detail-section"><h3>Note</h3>${noteEditorHTML(notes[0])}</section>`;const active=notes.find(item=>item.id===state.activeNoteId)||notes[0];return `<section class="detail-section"><h3>Notes in selection</h3><div class="selection-notes"><div class="note-tabs" role="tablist" aria-label="Selected Pin notes">${notes.map(item=>`<button class="note-tab${item.id===active.id?" active":""}" role="tab" aria-selected="${item.id===active.id}" data-note-id="${item.id}"><strong>${esc(item.title)}</strong><span>${esc(item.note)||"No note yet"}</span></button>`).join("")}</div><article class="note-full"><strong data-note-full-title>${esc(active.title)}</strong>${noteEditorHTML(active)}</article></div></section>`;}
+    function multiDetailsHTML(items){if(items.length===1)return detailHTML(items[0]);return `<div class="detail-content"><div class="selection-overview">${contextVisualHTML(items)}<div class="selection-overview-copy"><div class="eyebrow">Selection</div><h2>${items.length} Pins selected</h2><p>Bulk metadata and shared fields</p></div></div><div class="divider"></div>${editableTagsHTML(items)}${notePreviewHTML(items)}<section class="detail-section"><h3>Selected references</h3>${items.map(item=>`<div class="note-preview"><strong>${esc(item.title)}</strong><p>Added ${esc(item.saved)}</p></div>`).join("")}</section></div>`;}
+    function inspectorStyle(){if(state.inspectorMode!=="floating"||!state.inspectorPosition)return"";return `left:${state.inspectorPosition.x}px;top:${state.inspectorPosition.y}px;right:auto;bottom:auto;`;}
+    function inspectorHTML(){if(state.inspectorMode==="closed")return"";const items=contextRecords(),hasItems=items.length>0;if(!hasItems&&state.inspectorMode!=="docked")return"";const multi=items.length>1,title=hasItems?(multi?`${items.length} Pins selected`:items[0].title):"Inspector",emptyClass=hasItems?"":" empty",draggable=state.inspectorMode==="floating",selectionLabel=hasItems?`${items.length} selected`:"No selection";const dockIcon=`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.75" y="3.25" width="14.5" height="13.5" rx="2.5"></rect><path d="M12 3.75v12.5"></path></svg>`;const controls=`<button class="panel-toolbar-button" data-toggle-dock aria-label="${state.inspectorMode==="docked"?"Undock":"Dock"} inspector" title="${state.inspectorMode==="docked"?"Undock":"Dock"}">${dockIcon}</button>${state.inspectorMode==="floating"?`<button class="panel-toolbar-button" data-close-inspector aria-label="Close inspector" title="Close">×</button>`:""}`;const quickBody=`<div class="selection-overview">${contextVisualHTML(items)}<div class="selection-overview-copy"><div class="eyebrow">${multi?"Selected references":"Reference available"}</div><h2>${esc(title)}</h2><p>${multi?`${items.length} items · shared metadata`:`Added ${items[0].saved}`}</p></div></div><div class="divider" style="margin:12px 0"></div>${editableTagsHTML(items)}<div style="height:12px"></div>${notePreviewHTML(items)}`;const body=!hasItems?`<div class="inspector-empty"><div class="inspector-empty-icon">◇</div><strong>Select a Pin</strong><p>The dock stays available. Select one or more references to inspect tags and notes.</p></div>`:`${state.inspectorMode==="docked"?multiDetailsHTML(items):quickBody}<div class="inspector-actions"><button class="inspector-clear" data-clear-selection>Clear selection</button></div>`;return `<aside class="inspector-panel ${state.inspectorMode}${emptyClass}" data-inspector style="${inspectorStyle()}" aria-label="Inspector"><header class="panel-titlebar${draggable?" draggable-titlebar":""}" ${draggable?`data-drag-handle="inspector" title="Drag to move Inspector"`:""}><div class="panel-heading"><strong>Inspector</strong><small>${selectionLabel}</small></div><span class="spacer"></span>${controls}</header><div class="inspector-body">${body}</div></aside>`;}
+    function needsAttentionHTML(){const cards=captureAttempts.map(item=>{const local=item.state==="local-write-failed";const title=local?"Couldn’t save to PinRef":"Save not confirmed";const explanation=local?"Pinterest Save was confirmed. This retry commits the same operation idempotently.":"No reliable same-Pin completion evidence was available. This is not a Reference and does not count in Library.";return `<article class="attempt-card" data-attempt="${esc(item.attemptId)}"><div><h2>${title}</h2><p>${explanation}</p><div class="attempt-meta"><span>Pin ${esc(item.pinId)}</span><span>origin tab ${item.originTabId}</span><span>${esc(item.surface)}</span><span>${esc(item.evidence)}</span><span>${esc(item.confidence)}</span></div></div><div class="attempt-actions">${local?`<button data-retry-attempt="${esc(item.attemptId)}">Retry</button>`:`<button data-check-attempt="${esc(item.attemptId)}">Check again</button>`}<button data-dismiss-attempt="${esc(item.attemptId)}">Dismiss</button></div></article>`;}).join("");return `<section class="needs-attention"><header><h1>Needs Attention</h1><p>Only identity-known Capture Attempts appear here. Pending or failed attempts stay outside the Library until Pinterest confirmation and local commit both succeed.</p></header><div class="attempt-list">${cards||`<div class="inspector-empty"><strong>Nothing needs attention</strong><p>Committed References live in Library.</p></div>`}</div></section>`;}
+    function render(){const list=filteredRecords(),docked=!compact()&&state.inspectorMode==="docked";const main=state.destination==="Needs Attention"?needsAttentionHTML():`<div class="anchored-topbar"><button class="sidebar-toggle" data-sidebar-toggle aria-label="${state.sidebarOpen?"Hide":"Show"} sidebar" aria-expanded="${state.sidebarOpen}"><svg class="sidebar-toggle-icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3" width="15" height="14" rx="2.5"></rect><path d="M7.5 3.5v13"></path></svg><span class="control-tooltip">${state.sidebarOpen?"Hide":"Show"} sidebar</span></button>${searchHTML()}</div><section class="contact ${docked?"inspector-docked":""}"><header class="contact-header"><div class="topbar-primary"></div><div class="gallery-toolbar"><div class="gallery-context"><strong>${list.length} references</strong>${state.filter!=="All"?`<span class="active-filter">Tag · ${esc(state.filter)}</span>`:""}</div><div class="gallery-controls"><button class="compact-sort" data-sort-recent aria-label="Change sort order">⇅ <span>${state.sortRecent?"Recently added":"Oldest first"}</span></button>${galleryControlsHTML()}</div></div></header><div class="contact-sheet mode-${state.galleryMode}" aria-label="Reference gallery in ${state.galleryMode} layout">${list.map(cardHTML).join("")}</div>${inspectorHTML()}</section>${tagPickerHTML()}`;document.getElementById("app").innerHTML=`<div class="workspace ${state.sidebarOpen?"":"sidebar-closed"} ${docked?"inspector-docked-layout":""}">${sidebarHTML()}${main}</div>`;document.getElementById("prototype-state").textContent=`Throwaway prototype · ${state.destination} · ${captureAttempts.length} attempts · ${records.length} references`;bind();}
+    function applyTheme(){document.documentElement.dataset.theme=state.theme;}
+    function applyTag(tag){const clean=tag.trim().toLowerCase();if(!clean)return;contextRecords().forEach(record=>{if(!record.tags.includes(clean))record.tags.push(clean);});state.lastAction=`Added “${clean}” to ${contextRecords().length} reference${contextRecords().length>1?"s":""}`;state.tagQuery="";render();requestAnimationFrame(()=>document.querySelector("#tag-picker-search")?.focus());}
+    function removeCommonTag(tag){contextRecords().forEach(record=>{record.tags=record.tags.filter(item=>item!==tag);});state.lastAction=`Removed “${tag}”`;render();}
+    function removeSidebarTags(tags){tags.forEach(tag=>{const index=tagCatalog.findIndex(item=>item.tag===tag);if(index>=0)tagCatalog.splice(index,1);records.forEach(record=>{record.tags=record.tags.filter(item=>item!==tag);});delete tagColors[tag];if(state.filter===tag)state.filter="All";state.selectedSidebarTags.delete(tag);});state.sidebarTagEditor=null;state.sidebarTagMenu=null;render();}
+    function renameSidebarTag(oldTag,newValue){const next=newValue.trim().toLowerCase();if(!next||next===oldTag){state.sidebarTagEditor=null;render();return;}const item=tagCatalog.find(entry=>entry.tag===oldTag);if(!item||tagCatalog.some(entry=>entry.tag===next))return;if(tagColors[oldTag]){tagColors[next]=tagColors[oldTag];delete tagColors[oldTag];}item.tag=next;records.forEach(record=>{record.tags=record.tags.map(tag=>tag===oldTag?next:tag);});if(state.filter===oldTag)state.filter=next;if(state.selectedSidebarTags.delete(oldTag))state.selectedSidebarTags.add(next);state.sidebarTagEditor=null;state.sidebarTagMenu=null;render();}
+    function bindInspectorDrag(){const handle=document.querySelector('[data-drag-handle="inspector"]'),panel=document.querySelector("[data-inspector]");if(!handle||!panel||compact())return;handle.addEventListener("pointerdown",event=>{if(event.button!==0||event.target.closest("button,a,input,textarea,[role=button]"))return;event.preventDefault();const rect=panel.getBoundingClientRect(),dx=event.clientX-rect.left,dy=event.clientY-rect.top;panel.classList.add("dragging");panel.style.left=`${rect.left}px`;panel.style.top=`${rect.top}px`;panel.style.right="auto";panel.style.bottom="auto";handle.setPointerCapture(event.pointerId);const move=e=>{const x=Math.min(innerWidth-panel.offsetWidth-8,Math.max(8,e.clientX-dx));const y=Math.min(innerHeight-panel.offsetHeight-8,Math.max(8,e.clientY-dy));panel.style.left=`${x}px`;panel.style.top=`${y}px`;};const end=e=>{if(handle.hasPointerCapture(e.pointerId))handle.releasePointerCapture(e.pointerId);const final=panel.getBoundingClientRect();state.inspectorPosition={x:Math.round(final.left),y:Math.round(final.top)};panel.classList.remove("dragging");handle.removeEventListener("pointermove",move);handle.removeEventListener("pointerup",end);handle.removeEventListener("pointercancel",end);};handle.addEventListener("pointermove",move);handle.addEventListener("pointerup",end);handle.addEventListener("pointercancel",end);});}
+    function positionTagPicker(){const picker=document.querySelector(".tag-picker"),trigger=document.querySelector("[data-toggle-tag-picker]");if(!picker||!trigger)return;const width=picker.offsetWidth,height=picker.offsetHeight;if(state.tagPickerPosition){const left=Math.min(innerWidth-width-12,Math.max(12,state.tagPickerPosition.x)),top=Math.min(innerHeight-height-12,Math.max(12,state.tagPickerPosition.y));picker.style.left=`${Math.round(left)}px`;picker.style.top=`${Math.round(top)}px`;picker.style.transform="none";state.tagPickerPosition={x:Math.round(left),y:Math.round(top)};return;}const anchor=trigger.getBoundingClientRect(),left=Math.min(innerWidth-width-12,Math.max(12,anchor.left));let top=anchor.bottom+8;if(top+height>innerHeight-12)top=Math.max(12,anchor.top-height-8);picker.style.left=`${Math.round(left)}px`;picker.style.top=`${Math.round(top)}px`;picker.style.transform="none";picker.style.transformOrigin=top<anchor.top?"bottom left":"top left";}
+    function bindTagPickerDrag(){const handle=document.querySelector('[data-drag-handle="tag-picker"]'),panel=document.querySelector(".tag-picker");if(!handle||!panel)return;handle.addEventListener("pointerdown",event=>{if(event.button!==0||event.target.closest("button,a,input,textarea,[role=button]"))return;event.preventDefault();const rect=panel.getBoundingClientRect(),dx=event.clientX-rect.left,dy=event.clientY-rect.top;panel.classList.add("dragging");handle.setPointerCapture(event.pointerId);const move=e=>{const x=Math.min(innerWidth-panel.offsetWidth-8,Math.max(8,e.clientX-dx));const y=Math.min(innerHeight-panel.offsetHeight-8,Math.max(8,e.clientY-dy));panel.style.left=`${x}px`;panel.style.top=`${y}px`;panel.style.transform="none";};const end=e=>{if(handle.hasPointerCapture(e.pointerId))handle.releasePointerCapture(e.pointerId);const final=panel.getBoundingClientRect();state.tagPickerPosition={x:Math.round(final.left),y:Math.round(final.top)};panel.classList.remove("dragging");handle.removeEventListener("pointermove",move);handle.removeEventListener("pointerup",end);handle.removeEventListener("pointercancel",end);};handle.addEventListener("pointermove",move);handle.addEventListener("pointerup",end);handle.addEventListener("pointercancel",end);});}
+    function bind(){
+      document.querySelector("[data-sidebar-toggle]")?.addEventListener("click",()=>{state.sidebarOpen=!state.sidebarOpen;render();requestAnimationFrame(()=>document.querySelector("[data-sidebar-toggle]")?.focus());});
+      document.querySelector("[data-sidebar-backdrop]")?.addEventListener("click",()=>{state.sidebarOpen=false;render();requestAnimationFrame(()=>document.querySelector("[data-sidebar-toggle]")?.focus());});
+      document.querySelectorAll("[data-sidebar-filter]").forEach(el=>el.addEventListener("click",()=>{state.destination="Library";state.filter=el.dataset.sidebarFilter;state.searchOpen=false;if(compact())state.sidebarOpen=false;render();}));
+      document.querySelectorAll("[data-destination]").forEach(el=>el.addEventListener("click",()=>{state.destination=el.dataset.destination;if(compact())state.sidebarOpen=false;render();}));
+      document.querySelectorAll("[data-dismiss-attempt]").forEach(el=>el.addEventListener("click",()=>{const index=captureAttempts.findIndex(item=>item.attemptId===el.dataset.dismissAttempt);if(index>=0)captureAttempts.splice(index,1);render();}));
+      document.querySelectorAll("[data-check-attempt]").forEach(el=>el.addEventListener("click",()=>{const item=captureAttempts.find(entry=>entry.attemptId===el.dataset.checkAttempt);if(item){item.evidence="check-again: no reliable evidence";item.confidence="Unavailable";}render();}));
+      document.querySelectorAll("[data-retry-attempt]").forEach(el=>el.addEventListener("click",()=>{const index=captureAttempts.findIndex(item=>item.attemptId===el.dataset.retryAttempt);if(index<0)return;const [item]=captureAttempts.splice(index,1);records.unshift({id:item.pinId,art:"art-a",ratio:"4/5",title:`Recovered Pin ${item.pinId}`,tags:[],note:"",saved:new Date().toLocaleDateString()});state.destination="Library";state.filter="All";render();}));
+      const sidebarSearch=document.querySelector("#sidebar-tag-search");sidebarSearch?.addEventListener("input",event=>{state.sidebarTagQuery=event.target.value;const cursor=event.target.selectionStart;render();const input=document.querySelector("#sidebar-tag-search");input?.focus();input?.setSelectionRange(cursor,cursor);});
+      document.querySelectorAll("[data-sidebar-tag-check]").forEach(el=>el.addEventListener("click",event=>{event.preventDefault();event.stopPropagation();const visible=filteredSidebarTags(),index=visible.findIndex(item=>item.tag===el.dataset.sidebarTagCheck),selecting=!state.selectedSidebarTags.has(el.dataset.sidebarTagCheck);if(event.shiftKey&&state.lastSidebarTagIndex!==null){const start=Math.min(state.lastSidebarTagIndex,index),end=Math.max(state.lastSidebarTagIndex,index);visible.slice(start,end+1).forEach(item=>selecting?state.selectedSidebarTags.add(item.tag):state.selectedSidebarTags.delete(item.tag));}else selecting?state.selectedSidebarTags.add(el.dataset.sidebarTagCheck):state.selectedSidebarTags.delete(el.dataset.sidebarTagCheck);state.lastSidebarTagIndex=index;state.sidebarTagMenu=null;state.sidebarTagEditor=null;render();}));
+      document.querySelectorAll("[data-sidebar-tag-menu]").forEach(el=>el.addEventListener("click",event=>{event.stopPropagation();state.sidebarTagMenu=state.sidebarTagMenu===el.dataset.sidebarTagMenu?null:el.dataset.sidebarTagMenu;state.sidebarTagEditor=null;render();}));
+      document.querySelectorAll("[data-edit-sidebar-tag]").forEach(el=>el.addEventListener("click",()=>{state.sidebarTagEditor={mode:el.dataset.editSidebarTag,tags:[state.sidebarTagMenu]};render();requestAnimationFrame(()=>document.querySelector("#tag-rename-input")?.select());}));
+      document.querySelectorAll("[data-close-tag-manager]").forEach(el=>el.addEventListener("click",()=>{state.sidebarTagEditor=null;state.sidebarTagMenu=null;render();}));
+      document.querySelector("[data-save-tag-name]")?.addEventListener("click",()=>renameSidebarTag(state.sidebarTagEditor.tags[0],document.querySelector("#tag-rename-input").value));
+      document.querySelector("#tag-rename-input")?.addEventListener("keydown",event=>{if(event.key==="Enter")renameSidebarTag(state.sidebarTagEditor.tags[0],event.target.value);});
+      document.querySelectorAll("[data-set-tag-color]").forEach(el=>el.addEventListener("click",()=>{tagColors[state.sidebarTagEditor.tags[0]]=el.dataset.setTagColor;state.sidebarTagEditor=null;state.sidebarTagMenu=null;render();}));
+      document.querySelector("[data-bulk-remove-tags]")?.addEventListener("click",()=>{state.sidebarTagEditor={mode:"delete",tags:[...state.selectedSidebarTags]};state.sidebarTagMenu=null;render();});
+      document.querySelector("[data-clear-sidebar-selection]")?.addEventListener("click",()=>{state.selectedSidebarTags.clear();state.lastSidebarTagIndex=null;render();});
+      document.querySelector("[data-remove-sidebar-tags]")?.addEventListener("click",()=>removeSidebarTags(state.sidebarTagEditor.tags));
+      document.querySelectorAll("[data-sidebar-tag-row]").forEach(el=>{el.addEventListener("dragstart",event=>{event.dataTransfer.effectAllowed="move";event.dataTransfer.setData("text/plain",el.dataset.sidebarTagRow);});el.addEventListener("dragover",event=>{event.preventDefault();el.classList.add("drag-over");});el.addEventListener("dragleave",()=>el.classList.remove("drag-over"));el.addEventListener("drop",event=>{event.preventDefault();const source=event.dataTransfer.getData("text/plain"),target=el.dataset.sidebarTagRow;el.classList.remove("drag-over");if(!source||source===target)return;const from=tagCatalog.findIndex(item=>item.tag===source),to=tagCatalog.findIndex(item=>item.tag===target);if(from<0||to<0)return;const [moved]=tagCatalog.splice(from,1);tagCatalog.splice(to,0,moved);render();});});
+      document.querySelector("[data-sort-recent]")?.addEventListener("click",()=>{state.sortRecent=!state.sortRecent;render();});
+      document.querySelectorAll("[data-gallery-mode]").forEach(el=>el.addEventListener("click",()=>{state.galleryMode=el.dataset.galleryMode;render();requestAnimationFrame(()=>document.querySelector(`[data-gallery-mode="${state.galleryMode}"]`)?.focus());}));
+      document.querySelectorAll("[data-id]").forEach(el=>el.addEventListener("click",event=>{if(event.target.closest("[data-select]"))return;state.activeId=el.dataset.id;state.activeNoteId=el.dataset.id;state.selected=new Set([el.dataset.id]);if(state.inspectorMode==="closed")state.inspectorMode="floating";state.tagPickerOpen=false;render();}));
+      document.querySelectorAll("[data-select]").forEach(el=>el.addEventListener("click",event=>{event.stopPropagation();const id=el.dataset.select;state.selected.has(id)?state.selected.delete(id):state.selected.add(id);state.activeId=id;state.activeNoteId=id;state.lastAction="";if(state.selected.size&&state.inspectorMode==="closed")state.inspectorMode="floating";else if(!state.selected.size&&state.inspectorMode!=="docked")state.inspectorMode="closed";state.tagPickerOpen=false;state.tagPickerPosition=null;render();}));
+      const search=document.querySelector("#search");search?.addEventListener("focus",()=>{if(!state.searchOpen){state.searchOpen=true;render();requestAnimationFrame(()=>document.querySelector("#search")?.focus());}});search?.addEventListener("input",event=>{state.query=event.target.value;state.searchOpen=true;const cursor=event.target.selectionStart;render();const input=document.querySelector("#search");input?.focus();input?.setSelectionRange(cursor,cursor);});
+      document.querySelectorAll("[data-search-tag]").forEach(el=>el.addEventListener("click",()=>{state.query=el.dataset.searchTag;state.searchOpen=false;render();}));
+      document.querySelector("#theme")?.addEventListener("click",()=>{state.theme=state.theme==="light"?"dark":"light";applyTheme();render();requestAnimationFrame(()=>document.querySelector("#theme")?.focus());});
+      document.querySelector("[data-toggle-tag-picker]")?.addEventListener("click",()=>{state.tagPickerOpen=!state.tagPickerOpen;state.tagPickerPosition=null;state.lastAction="";render();requestAnimationFrame(()=>document.querySelector("#tag-picker-search")?.focus());});
+      document.querySelectorAll("[data-close-tag-picker]").forEach(el=>el.addEventListener("click",()=>{state.tagPickerOpen=false;state.tagQuery="";state.tagPickerPosition=null;render();requestAnimationFrame(()=>document.querySelector("[data-toggle-tag-picker]")?.focus());}));
+      const tagSearch=document.querySelector("#tag-picker-search");tagSearch?.addEventListener("input",event=>{state.tagQuery=event.target.value;const cursor=event.target.selectionStart;render();const input=document.querySelector("#tag-picker-search");input?.focus();input?.setSelectionRange(cursor,cursor);});tagSearch?.addEventListener("keydown",event=>{if(event.key==="ArrowDown"){event.preventDefault();document.querySelector("[data-apply-tag],[data-create-tag]")?.focus();}if(event.key==="Escape"){event.preventDefault();state.tagPickerOpen=false;render();requestAnimationFrame(()=>document.querySelector("[data-toggle-tag-picker]")?.focus());}});
+      document.querySelectorAll("[data-apply-tag]").forEach(el=>el.addEventListener("click",()=>applyTag(el.dataset.applyTag)));document.querySelectorAll("[data-create-tag]").forEach(el=>el.addEventListener("click",()=>applyTag(el.dataset.createTag)));
+      document.querySelectorAll("[data-remove-common-tag]").forEach(el=>el.addEventListener("click",()=>removeCommonTag(el.dataset.removeCommonTag)));
+      document.querySelectorAll("[data-note-id]").forEach(el=>{const preview=()=>{const note=records.find(item=>item.id===el.dataset.noteId),editor=document.querySelector("[data-note-editor]");if(!note||!editor)return;document.querySelector("[data-note-full-title]").textContent=note.title;editor.value=note.note;editor.dataset.noteEditor=note.id;editor.name=`note-${note.id}`;editor.setAttribute("aria-label",`Edit note for ${note.title}`);};el.addEventListener("mouseenter",preview);el.addEventListener("focus",preview);el.addEventListener("click",()=>{state.activeNoteId=el.dataset.noteId;render();});});
+      document.querySelectorAll("[data-note-editor]").forEach(editor=>editor.addEventListener("input",event=>{const note=records.find(item=>item.id===event.target.dataset.noteEditor);if(!note)return;note.note=event.target.value;const preview=document.querySelector(`[data-note-id="${note.id}"] span`);if(preview)preview.textContent=note.note||"No note yet";}));
+      document.querySelector("[data-clear-selection]")?.addEventListener("click",()=>{state.selected.clear();state.lastAction="";if(state.inspectorMode!=="docked")state.inspectorMode="closed";state.tagPickerOpen=false;state.tagPickerPosition=null;render();});
+      document.querySelector("[data-toggle-dock]")?.addEventListener("click",()=>{state.inspectorMode=state.inspectorMode==="docked"?(state.selected.size?"floating":"closed"):"docked";state.inspectorPosition=null;render();});
+      document.querySelector("[data-close-inspector]")?.addEventListener("click",()=>{state.inspectorMode="closed";render();});
+      bindInspectorDrag();
+      positionTagPicker();
+      bindTagPickerDrag();
+    }
+    applyTheme();render();
+    compactMedia.addEventListener("change",event=>{state.sidebarOpen=!event.matches;render();});
+    document.addEventListener("pointerdown",event=>{if(state.searchOpen&&!event.target.closest(".search-box")){setTimeout(()=>{if(state.searchOpen){state.searchOpen=false;render();}},0);}},true);
+    document.addEventListener("keydown",event=>{const editing=event.target.matches("input,textarea,[contenteditable=true]");if(!editing&&(event.key==="/"||((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="k"))){event.preventDefault();document.querySelector("#search")?.focus();}if(event.key==="Escape"){if(state.sidebarTagEditor||state.sidebarTagMenu){state.sidebarTagEditor=null;state.sidebarTagMenu=null;}else if(state.tagPickerOpen){state.tagPickerOpen=false;state.tagQuery="";state.tagPickerPosition=null;}else if(state.searchOpen)state.searchOpen=false;else if(!editing&&state.selected.size){state.selected.clear();if(state.inspectorMode!=="docked")state.inspectorMode="closed";}render();}});
+  </script>
+</body>
+</html>

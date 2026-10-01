@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PinRef Dashboard</title>
+  
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <div id="prototype-state" class="prototype-badge">Throwaway prototype</div>
+  <div id="metadata-reload-control" class="metadata-reload-control">
+    <output id="metadata-reload-status" role="status" aria-live="polite"></output>
+    <button id="reload-dashboard-metadata" class="quiet-button" type="button" disabled title="Reload preview for selected Pins">
+      <span class="reload-glyph" aria-hidden="true">↻</span><span>Reload metadata</span>
+    </button>
+  </div>
+  <button id="open-import-lab" class="import-lab-launcher" type="button">Import lab</button>
+  <aside id="import-lab" class="import-lab" aria-label="Import from Pinterest prototype" hidden></aside>
+  <main id="app" class="app"></main>
+
+  <script src="pinref-store.js"></script>
+  <script src="dashboard.js"></script>
+  <script src="import-dashboard.js"></script>
+</body>
+</html>
